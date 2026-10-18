@@ -63,7 +63,7 @@ build() {
 		extension=.exe
 	fi
 	output="dist/mimamori-${goos}-${goarch}${extension}"
-	CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" \
+	CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" GOARM=6 \
 		go build -trimpath -buildvcs=false -ldflags "-s -w -X main.version=$VERSION" -o "$output" .
 
 	package_dir="dist/.package-${goos}-${goarch}"
