@@ -462,6 +462,54 @@ func TestMergeHostsDeduplicatesSortsAndCaps(t *testing.T) {
 	}
 }
 
+func TestMergeNeighborsOriginalWinsAndRefreshAdds(t *testing.T) {
+	ip1 := netip.MustParseAddr("192.168.1.1")
+	ip2 := netip.MustParseAddr("192.168.1.2")
+	ip3 := netip.MustParseAddr("192.168.1.3")
+	got := mergeNeighbors(
+		[]lan.Neighbor{{IP: ip1, MAC: "aa:aa:aa:aa:aa:01"}, {IP: ip2, MAC: "aa:aa:aa:aa:aa:02"}},
+		[]lan.Neighbor{{IP: ip1, MAC: "bb:bb:bb:bb:bb:01"}, {IP: ip3, MAC: "bb:bb:bb:bb:bb:03"}},
+	)
+	want := []lan.Neighbor{
+		{IP: ip1, MAC: "aa:aa:aa:aa:aa:01"},
+		{IP: ip2, MAC: "aa:aa:aa:aa:aa:02"},
+		{IP: ip3, MAC: "bb:bb:bb:bb:bb:03"},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("mergeNeighbors() returned %d entries, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("mergeNeighbors()[%d] = %#v, want %#v", i, got[i], want[i])
+		}
+	}
+}
+
+func TestDeviceHostsIncludesOnlyObservedSweptHosts(t *testing.T) {
+	gateway := netip.MustParseAddr("192.168.1.1")
+	neighbors := []lan.Neighbor{{IP: gateway, MAC: "aa:bb:cc:dd:ee:ff"}}
+	scanTargets := mergeHosts(
+		collectHosts(neighbors, gateway, nil),
+		lan.SweepHosts([]netip.Prefix{netip.MustParsePrefix("192.168.1.23/24")}, gateway),
+	)
+	if len(scanTargets) != 253 {
+		t.Fatalf("scan target count = %d, want 253", len(scanTargets))
+	}
+
+	got := deviceHosts(neighbors, gateway, nil, []probe.Open{{
+		IP: netip.MustParseAddr("192.168.1.30"), Port: 23,
+	}})
+	want := []netip.Addr{gateway, netip.MustParseAddr("192.168.1.30")}
+	if len(got) != len(want) {
+		t.Fatalf("deviceHosts() = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("deviceHosts()[%d] = %s, want %s", i, got[i], want[i])
+		}
+	}
+}
+
 func TestGatewayString(t *testing.T) {
 	if got := gatewayString(netip.Addr{}); got != "" {
 		t.Fatalf("gatewayString(invalid) = %q", got)

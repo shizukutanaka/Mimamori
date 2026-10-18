@@ -198,21 +198,31 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 		incomplete = true
 	}
 
-	hosts := collectHosts(arp.neighbors, gatewayIP, discovery.responses)
+	initialHosts := collectHosts(arp.neighbors, gatewayIP, discovery.responses)
+	scanTargets := initialHosts
 	if gatewayIP.IsValid() {
 		prefixes, err := lan.LocalPrefixes()
 		if err != nil {
 			fmt.Fprintf(stderr, "warning: cannot list network interfaces: %v\n", err)
 			incomplete = true
 		}
-		hosts = mergeHosts(hosts, lan.SweepHosts(prefixes, gatewayIP))
+		scanTargets = mergeHosts(initialHosts, lan.SweepHosts(prefixes, gatewayIP))
 	}
 	if incomplete && !*jsonOutput {
 		fmt.Fprintln(stderr, "warning: some checks could not run; this result may be incomplete")
 	}
 
-	opened := probe.Scan(ctx, hosts, []int{23, 2323, 21, 5900}, 700*time.Millisecond, 128)
-	canReport, forceIncomplete := reportable(scanObservedNetwork(arp.neighbors, discovery.responses, opened), wifiFs)
+	opened := probe.Scan(ctx, scanTargets, []int{23, 2323, 21, 5900}, 700*time.Millisecond, 128)
+	neighbors := arp.neighbors
+	if len(scanTargets) > len(initialHosts) {
+		refreshed, err := lan.ReadARP(ctx)
+		if err != nil {
+			fmt.Fprintf(stderr, "warning: cannot refresh the neighbor table: %v\n", err)
+		} else {
+			neighbors = mergeNeighbors(neighbors, refreshed)
+		}
+	}
+	canReport, forceIncomplete := reportable(scanObservedNetwork(neighbors, discovery.responses, opened), wifiFs)
 	if forceIncomplete {
 		if !incomplete && !*jsonOutput {
 			fmt.Fprintln(stderr, "warning: some checks could not run; this result may be incomplete")
@@ -245,14 +255,15 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 		}
 	}
 
-	neighborByIP := make(map[netip.Addr]lan.Neighbor, len(arp.neighbors))
-	for _, neighbor := range arp.neighbors {
+	reportedHosts := deviceHosts(neighbors, gatewayIP, discovery.responses, opened)
+	neighborByIP := make(map[netip.Addr]lan.Neighbor, len(neighbors))
+	for _, neighbor := range neighbors {
 		neighborByIP[neighbor.IP] = neighbor
 	}
-	deviceNames := make(map[netip.Addr]string, len(hosts))
+	deviceNames := make(map[netip.Addr]string, len(reportedHosts))
 	newDevices := make(map[netip.Addr]bool)
 	now := time.Now().UTC()
-	for _, host := range hosts {
+	for _, host := range reportedHosts {
 		neighbor := neighborByIP[host]
 		name := deviceName(lang, host, neighbor, gatewayIP, descriptions)
 		deviceNames[host] = name
@@ -263,8 +274,8 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 		newDevices[host] = !firstRun && isNew
 	}
 
-	devices := make([]deviceOutput, 0, len(hosts))
-	for _, host := range hosts {
+	devices := make([]deviceOutput, 0, len(reportedHosts))
+	for _, host := range reportedHosts {
 		neighbor := neighborByIP[host]
 		devices = append(devices, deviceOutput{
 			IP: host.String(), MAC: neighbor.MAC, Name: deviceNames[host], New: newDevices[host],
@@ -410,6 +421,34 @@ func mergeHosts(hosts, swept []netip.Addr) []netip.Addr {
 		return merged[i].Less(merged[j])
 	})
 	return merged
+}
+
+func mergeNeighbors(original, refreshed []lan.Neighbor) []lan.Neighbor {
+	seen := make(map[netip.Addr]struct{}, len(original)+len(refreshed))
+	merged := make([]lan.Neighbor, 0, len(original)+len(refreshed))
+	for _, list := range [][]lan.Neighbor{original, refreshed} {
+		for _, neighbor := range list {
+			if _, exists := seen[neighbor.IP]; exists {
+				continue
+			}
+			seen[neighbor.IP] = struct{}{}
+			merged = append(merged, neighbor)
+		}
+	}
+	sort.Slice(merged, func(i, j int) bool {
+		return merged[i].IP.Less(merged[j].IP)
+	})
+	return merged
+}
+
+func deviceHosts(neighbors []lan.Neighbor, gateway netip.Addr, responses []ssdp.Response, opened []probe.Open) []netip.Addr {
+	openedHosts := make([]netip.Addr, 0, len(opened))
+	for _, item := range opened {
+		if item.IP.Is4() && item.IP.IsPrivate() {
+			openedHosts = append(openedHosts, item.IP)
+		}
+	}
+	return mergeHosts(openedHosts, collectHosts(neighbors, gateway, responses))
 }
 
 func newUPnPHTTPClient() *http.Client {
