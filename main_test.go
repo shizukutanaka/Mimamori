@@ -421,7 +421,7 @@ func TestResolveLanguage(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.value, func(t *testing.T) {
-			got, err := resolveLanguage(test.value, "en", func(key string) string { return test.env[key] })
+			got, err := resolveLanguage(test.value, func(key string) string { return test.env[key] })
 			if (err != nil) != test.err {
 				t.Fatalf("resolveLanguage(%q) error = %v, want error %t", test.value, err, test.err)
 			}

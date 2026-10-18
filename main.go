@@ -138,9 +138,9 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 		fmt.Fprintf(stdout, "Mimamori %s\n", version)
 		return earlyRunResult(0, pre, *jsonOutput)
 	}
-	resolvedLang, err := resolveLanguage(*language, pre, getenv)
+	resolvedLang, err := resolveLanguage(*language, getenv)
 	if err != nil {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(stderr, i18n.T(pre, "invalid_lang", *language, strings.Join(i18n.Supported(), ", ")))
 		return earlyRunResult(1, pre, *jsonOutput)
 	}
 	lang = resolvedLang
@@ -376,6 +376,16 @@ func writeOutput(writer io.Writer, result output, jsonMode bool, lang string) er
 		return io.ErrShortWrite
 	}
 	return nil
+}
+
+func resolveLanguage(flagValue string, getenv func(string) string) (string, error) {
+	if flagValue == "auto" {
+		return i18n.Detect(getenv), nil
+	}
+	if lang, ok := i18n.Match(flagValue); ok {
+		return lang, nil
+	}
+	return "", fmt.Errorf("invalid --lang %q (use auto, or one of %s)", flagValue, strings.Join(i18n.Supported(), ", "))
 }
 
 func gatewayString(ip netip.Addr) string {
