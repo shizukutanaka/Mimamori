@@ -203,11 +203,15 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 
 	initialHosts := collectHosts(arp.neighbors, gatewayIP, discovery.responses)
 	scanTargets := initialHosts
+	var prefixes []netip.Prefix
+	prefixesFailed := false
 	if gatewayIP.IsValid() {
-		prefixes, err := lan.LocalPrefixes()
+		var err error
+		prefixes, err = lan.LocalPrefixes()
 		if err != nil {
 			fmt.Fprintf(stderr, "warning: cannot list network interfaces: %v\n", err)
 			incomplete = true
+			prefixesFailed = true
 		}
 		scanTargets = mergeHosts(initialHosts, lan.SweepHosts(prefixes, gatewayIP))
 	}
@@ -215,7 +219,7 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 		fmt.Fprintln(stderr, "warning: some checks could not run; this result may be incomplete")
 	}
 
-	opened := probe.Scan(ctx, scanTargets, []int{23, 2323, 21, 5900}, 700*time.Millisecond, 128)
+	opened := probe.Scan(ctx, scanTargets, []int{23, 2323, 21, 5900, 5555}, 700*time.Millisecond, 128)
 	neighbors := arp.neighbors
 	if len(scanTargets) > len(initialHosts) {
 		refreshed, err := lan.ReadARP(ctx)
@@ -233,9 +237,14 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 		incomplete = true
 	}
 	if !canReport {
-		fmt.Fprintln(stderr, "error: the scan could not see any device on your network; the result would not be reliable")
+		printNoDeviceError(stderr, lang, wifiCheck.err)
 		return finish(1)
 	}
+
+	if prefixesFailed {
+		prefixes = nil
+	}
+	neighbors = homeNeighbors(neighbors, prefixes, gatewayIP)
 
 	store, existed, err := baseline.Load(*statePath)
 	firstRun := !existed
@@ -287,6 +296,7 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 
 	findings := makeFindings(opened, discovery.responses, gatewayIP, descriptions, deviceNames, newDevices, portMappings, lang)
 	findings = append(findings, wifiFs...)
+	findings = append(findings, gatewaySpoofFindings(neighbors, gatewayIP, lang)...)
 	report.Sort(findings)
 	status := report.Status(report.Score(findings), findings)
 	result := output{
@@ -315,6 +325,13 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 		}
 	}
 	return finish(0)
+}
+
+func printNoDeviceError(writer io.Writer, lang string, wifiErr error) {
+	fmt.Fprintln(writer, "error: the scan could not see any device on your network; the result would not be reliable")
+	if errors.Is(wifiErr, wifi.ErrLocationPermission) {
+		fmt.Fprintln(writer, i18n.T(lang, "wifi_location_notice"))
+	}
 }
 
 func printScanningNotice(writer io.Writer, lang string, jsonOutput bool) {
@@ -638,6 +655,8 @@ func makeFindings(
 			findings = append(findings, report.Finding{ID: "ftp_open", Level: report.Caution, Points: 8, IP: item.IP.String(), Device: name})
 		case 5900:
 			findings = append(findings, report.Finding{ID: "vnc_open", Level: report.Caution, Points: 8, IP: item.IP.String(), Device: name})
+		case 5555:
+			findings = append(findings, report.Finding{ID: "adb_open", Level: report.Caution, Points: 8, IP: item.IP.String(), Device: name})
 		}
 	}
 	for ip, isNew := range newDevices {
@@ -714,7 +733,7 @@ func makeFindings(
 		finding.Message = i18n.T(lang, finding.ID)
 		finding.Fix = i18n.T(lang, finding.ID+"_fix")
 		switch finding.ID {
-		case "telnet_open", "ftp_open", "vnc_open", "new_device":
+		case "telnet_open", "ftp_open", "vnc_open", "adb_open", "new_device":
 			finding.Message = i18n.T(lang, finding.ID, finding.Device)
 		case "port_forward", "port_forward_risky":
 			finding.Message = i18n.T(lang, finding.ID, finding.Device, finding.Port)
@@ -732,7 +751,7 @@ func riskyPortForward(mapping ssdp.PortMapping) bool {
 		return false
 	}
 	switch mapping.InternalPort {
-	case 21, 22, 23, 2323, 445, 3389, 5900:
+	case 21, 22, 23, 2323, 445, 3389, 5900, 5555:
 		return true
 	default:
 		return false

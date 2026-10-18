@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/netip"
@@ -66,6 +67,34 @@ func TestMakeFindings(t *testing.T) {
 	}
 }
 
+func TestADBOpenFinding(t *testing.T) {
+	ip := netip.MustParseAddr("192.168.1.10")
+	deviceName := "Android TV"
+	findings := makeFindings(
+		[]probe.Open{{IP: ip, Port: 5555}},
+		nil,
+		netip.Addr{},
+		map[netip.Addr]ssdp.Description{},
+		map[netip.Addr]string{ip: deviceName},
+		map[netip.Addr]bool{},
+		nil,
+		"en",
+	)
+	if len(findings) != 1 {
+		t.Fatalf("makeFindings() returned %d findings, want exactly one: %#v", len(findings), findings)
+	}
+	finding := findings[0]
+	if finding.ID != "adb_open" || finding.Level != report.Caution || finding.Points != 8 {
+		t.Fatalf("ADB finding = %#v, want adb_open/Caution/8", finding)
+	}
+	if finding.IP != ip.String() || finding.Device != deviceName {
+		t.Fatalf("ADB finding target = %#v, want IP %s and device %q", finding, ip, deviceName)
+	}
+	if finding.Message != i18n.T("en", "adb_open", deviceName) || finding.Fix != i18n.T("en", "adb_open_fix") {
+		t.Fatalf("ADB finding text = %#v, want localized message and fix", finding)
+	}
+}
+
 func TestPortForwardFindings(t *testing.T) {
 	internalIP := netip.MustParseAddr("192.168.1.30")
 	publicIP := netip.MustParseAddr("8.8.8.8")
@@ -110,6 +139,14 @@ func TestPortForwardFindings(t *testing.T) {
 			}},
 			names:  map[netip.Addr]string{internalIP: "Office PC"},
 			wantID: "port_forward_risky", wantLevel: report.Danger, wantCount: 1, wantPort: 3389, wantName: "Office PC",
+		},
+		{
+			name: "unrestricted TCP ADB port is danger",
+			mappings: []ssdp.PortMapping{{
+				ExternalPort: 5555, Protocol: "TCP", InternalPort: 5555, InternalClient: internalIP.String(), Enabled: true,
+			}},
+			names:  map[netip.Addr]string{internalIP: "Android TV"},
+			wantID: "port_forward_risky", wantLevel: report.Danger, wantCount: 1, wantPort: 5555, wantName: "Android TV",
 		},
 		{
 			name: "ordinary forward",
@@ -877,6 +914,34 @@ func TestWiFiLocationRequiredTextAndJSON(t *testing.T) {
 			}
 			if test.present && value != true {
 				t.Fatalf("JSON wifi_location_required = %#v, want true", value)
+			}
+		})
+	}
+}
+
+func TestPrintNoDeviceError(t *testing.T) {
+	const errorLine = "error: the scan could not see any device on your network; the result would not be reliable"
+	locationNotice := i18n.T("ja", "wifi_location_notice")
+	tests := []struct {
+		name       string
+		wifiErr    error
+		wantNotice bool
+	}{
+		{name: "location permission", wifiErr: wifi.ErrLocationPermission, wantNotice: true},
+		{name: "wrapped location permission", wifiErr: fmt.Errorf("x: %w", wifi.ErrLocationPermission), wantNotice: true},
+		{name: "nil error"},
+		{name: "other error", wifiErr: context.Canceled},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var output bytes.Buffer
+			printNoDeviceError(&output, "ja", test.wifiErr)
+			want := errorLine + "\n"
+			if test.wantNotice {
+				want += locationNotice + "\n"
+			}
+			if got := output.String(); got != want {
+				t.Fatalf("printNoDeviceError() = %q, want %q", got, want)
 			}
 		})
 	}
