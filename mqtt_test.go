@@ -20,7 +20,7 @@ func TestMQTTAnonymousFinding(t *testing.T) {
 				netip.Addr{},
 				map[netip.Addr]ssdp.Description{},
 				map[netip.Addr]string{ip: "Kitchen hub"},
-				map[netip.Addr]bool{},
+				nil,
 				nil,
 				lang,
 			)
