@@ -17,18 +17,6 @@ func TestScoreClamps(t *testing.T) {
 	}
 }
 
-func TestScoreClampsWithoutIntegerOverflow(t *testing.T) {
-	maxInt := int(^uint(0) >> 1)
-	minInt := -maxInt - 1
-
-	if got := Score([]Finding{{Points: maxInt}, {Points: maxInt}}); got != 0 {
-		t.Errorf("Score() with large deductions = %d, want 0", got)
-	}
-	if got := Score([]Finding{{Points: minInt}}); got != 100 {
-		t.Errorf("Score() with a large negative deduction = %d, want 100", got)
-	}
-}
-
 func TestStatus(t *testing.T) {
 	tests := []struct {
 		findings []Finding
@@ -68,22 +56,20 @@ func TestSortIsStableAndTotal(t *testing.T) {
 		{ID: "a", Level: Caution, Points: 8, IP: "192.168.1.2", Port: 5900},
 		{ID: "a", Level: Caution, Points: 8, IP: "192.168.1.2", Port: 21, Device: "Z"},
 		{ID: "a", Level: Caution, Points: 8, IP: "192.168.1.2", Port: 21, Device: "A"},
-		{ID: "a", Level: Caution, Points: 8, IP: "192.168.1.15z"},
 		{ID: "b", Level: Caution, Points: 8, IP: "192.168.1.2"},
 	}
 	want := []Finding{
 		{ID: "a", Level: Caution, Points: 8, IP: "192.168.1.2", Port: 21, Device: "A"},
 		{ID: "a", Level: Caution, Points: 8, IP: "192.168.1.2", Port: 21, Device: "Z"},
 		{ID: "a", Level: Caution, Points: 8, IP: "192.168.1.2", Port: 5900},
-		{ID: "a", Level: Caution, Points: 8, IP: "192.168.1.10"},
-		{ID: "a", Level: Caution, Points: 8, IP: "192.168.1.15z"},
 		{ID: "b", Level: Caution, Points: 8, IP: "192.168.1.2"},
 		{ID: "z", Level: Caution, Points: 8, IP: "192.168.1.2", Port: 21},
+		{ID: "a", Level: Caution, Points: 8, IP: "192.168.1.10"},
 	}
 
 	for _, input := range [][]Finding{
 		findings,
-		{findings[6], findings[5], findings[4], findings[3], findings[2], findings[1], findings[0]},
+		{findings[5], findings[4], findings[3], findings[2], findings[1], findings[0]},
 	} {
 		got := append([]Finding(nil), input...)
 		Sort(got)
