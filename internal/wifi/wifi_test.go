@@ -54,6 +54,8 @@ func TestParseNmcli(t *testing.T) {
 		{name: "WPA1", text: "yes:WPA1\n", want: WPA1orTKIP},
 		{name: "WPA2", text: "no:WEP\nyes:WPA2\n", want: Modern},
 		{name: "WPA3", text: "yes:WPA3\n", want: Modern},
+		{name: "WPA1 mixed with WPA2 remains weak", text: "yes:WPA1 WPA2\n", want: WPA1orTKIP},
+		{name: "WPA2 mixed with WPA3 is modern", text: "yes:WPA2 WPA3\n", want: Modern},
 		{name: "localized active value is not accepted", text: "はい:WPA2\n", want: Unknown},
 		{name: "no active network", text: "no:WPA2\n", want: Unknown},
 	}
@@ -89,11 +91,45 @@ Cipher                 : WEP`,
 			want: WEP,
 		},
 		{
+			name: "SSID named WEP does not override WPA2",
+			text: `Name                   : Wi-Fi
+State                  : connected
+SSID                   : WEP
+Authentication         : WPA2-Personal
+Cipher                 : CCMP`,
+			want: Modern,
+		},
+		{
+			name: "SSID named TKIP does not override WPA2",
+			text: `Name                   : Wi-Fi
+State                  : connected
+SSID                   : TKIP
+Authentication         : WPA2-Personal
+Cipher                 : CCMP`,
+			want: Modern,
+		},
+		{
 			name: "TKIP network",
 			text: `Name                   : Wi-Fi
 State                  : connected
 Authentication         : WPA-Personal
 Cipher                 : TKIP`,
+			want: WPA1orTKIP,
+		},
+		{
+			name: "WPA-Personal with CCMP remains weak",
+			text: `Name                   : Wi-Fi
+State                  : connected
+Authentication         : WPA-Personal
+Cipher                 : CCMP`,
+			want: WPA1orTKIP,
+		},
+		{
+			name: "WPA-Enterprise with CCMP remains weak",
+			text: `Name                   : Wi-Fi
+State                  : connected
+Authentication         : WPA-Enterprise
+Cipher                 : CCMP`,
 			want: WPA1orTKIP,
 		},
 		{

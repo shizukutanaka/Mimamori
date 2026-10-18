@@ -118,10 +118,10 @@ func ParseNmcli(text string) Security {
 				return Open
 			case strings.Contains(security, "WEP"):
 				return WEP
-			case strings.Contains(security, "WPA2"), strings.Contains(security, "WPA3"):
-				return Modern
 			case strings.Contains(security, "WPA1"), strings.Contains(security, "TKIP"):
 				return WPA1orTKIP
+			case strings.Contains(security, "WPA2"), strings.Contains(security, "WPA3"):
+				return Modern
 			default:
 				return Unknown
 			}
@@ -151,25 +151,35 @@ func ParseNetsh(text string) Security {
 
 	best := Unknown
 	for _, block := range blocks {
-		var values []string
+		var fields []string
 		connected := false
 		for _, line := range strings.Split(block, "\n") {
-			_, value, ok := strings.Cut(line, ":")
+			label, value, ok := strings.Cut(line, ":")
 			if !ok {
 				continue
 			}
+			label = strings.TrimSpace(label)
 			value = strings.TrimSpace(value)
-			values = append(values, value)
-			if isConnectedValue(value) {
+			isSSID := strings.Contains(strings.ToUpper(label), "SSID")
+			if !isSSID && isConnectedValue(value) {
 				connected = true
 			}
+			if isSSID {
+				continue
+			}
+			fields = append(fields, value)
 		}
 		if !connected {
 			continue
 		}
-		candidate := netshSecurity(values)
-		if securityRank(candidate) > securityRank(best) {
-			best = candidate
+		for i := 0; i+1 < len(fields); i++ {
+			if !isNetshAuthentication(fields[i]) || !isNetshCipher(fields[i+1]) {
+				continue
+			}
+			candidate := netshSecurity(fields[i], fields[i+1])
+			if securityRank(candidate) > securityRank(best) {
+				best = candidate
+			}
 		}
 	}
 	return best
@@ -188,36 +198,60 @@ func isConnectedValue(value string) bool {
 	return false
 }
 
-func netshSecurity(values []string) Security {
-	hasOpen, hasNone, hasTKIP, hasModern, hasModernCipher := false, false, false, false, false
-	for _, value := range values {
-		upper := strings.ToUpper(strings.TrimSpace(value))
-		switch upper {
-		case "WEP":
-			return WEP
-		case "TKIP":
-			hasTKIP = true
-		case "OPEN":
-			hasOpen = true
-		case "NONE":
-			hasNone = true
-		}
-		if strings.Contains(upper, "WPA2") || strings.Contains(upper, "WPA3") {
-			hasModern = true
-		}
-		if strings.Contains(upper, "CCMP") || strings.Contains(upper, "GCMP") {
-			hasModernCipher = true
-		}
+func isNetshAuthentication(value string) bool {
+	switch strings.ToUpper(strings.TrimSpace(value)) {
+	case "OPEN", "SHARED", "WPA-PERSONAL", "WPA-ENTERPRISE",
+		"WPA2-PERSONAL", "WPA2-ENTERPRISE", "WPA3-PERSONAL",
+		"WPA3-ENTERPRISE", "WPA3-SAE", "OWE":
+		return true
+	default:
+		return false
 	}
+}
+
+func isNetshCipher(value string) bool {
+	switch strings.ToUpper(strings.TrimSpace(value)) {
+	case "NONE", "WEP", "TKIP", "CCMP", "GCMP", "CCMP-256", "GCMP-256":
+		return true
+	default:
+		return false
+	}
+}
+
+func netshSecurity(authentication, cipher string) Security {
+	authentication = strings.ToUpper(strings.TrimSpace(authentication))
+	cipher = strings.ToUpper(strings.TrimSpace(cipher))
 	switch {
-	case hasTKIP:
-		return WPA1orTKIP
-	case hasOpen && hasNone:
+	case authentication == "SHARED" || cipher == "WEP":
+		return WEP
+	case authentication == "OPEN" && cipher == "NONE":
 		return Open
-	case hasModern && hasModernCipher:
+	case cipher == "TKIP":
+		return WPA1orTKIP
+	case authentication == "WPA-PERSONAL" || authentication == "WPA-ENTERPRISE":
+		return WPA1orTKIP
+	case isModernNetshAuthentication(authentication) && isModernNetshCipher(cipher):
 		return Modern
 	default:
 		return Unknown
+	}
+}
+
+func isModernNetshAuthentication(authentication string) bool {
+	switch authentication {
+	case "WPA2-PERSONAL", "WPA2-ENTERPRISE", "WPA3-PERSONAL", "WPA3-ENTERPRISE", "WPA3-SAE", "OWE":
+		return true
+	default:
+		return false
+	}
+}
+
+func isModernNetshCipher(cipher string) bool {
+	switch cipher {
+	case "CCMP", "GCMP", "CCMP-256", "GCMP-256":
+		return true
+	default:
+		return false
 	}
 }
 

@@ -458,6 +458,34 @@ func TestScanObservedNetwork(t *testing.T) {
 	}
 }
 
+func TestReportable(t *testing.T) {
+	tests := []struct {
+		name                string
+		observed            bool
+		wifiFindings        []report.Finding
+		wantReport          bool
+		wantForceIncomplete bool
+	}{
+		{name: "observed network", observed: true, wantReport: true},
+		{name: "unobserved with no Wi-Fi finding", wifiFindings: wifiFindings(wifi.Modern, "en")},
+		{
+			name:                "Wi-Fi danger allows unobserved report",
+			wifiFindings:        wifiFindings(wifi.Open, "en"),
+			wantReport:          true,
+			wantForceIncomplete: true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			gotReport, gotForceIncomplete := reportable(test.observed, test.wifiFindings)
+			if gotReport != test.wantReport || gotForceIncomplete != test.wantForceIncomplete {
+				t.Fatalf("reportable() = (%v, %v), want (%v, %v)",
+					gotReport, gotForceIncomplete, test.wantReport, test.wantForceIncomplete)
+			}
+		})
+	}
+}
+
 func TestShouldSaveHistory(t *testing.T) {
 	populated := baseline.Store{Devices: map[string]baseline.Seen{"aa:bb:cc:dd:ee:ff": {}}}
 	tests := []struct {
