@@ -219,7 +219,7 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 		fmt.Fprintln(stderr, "warning: some checks could not run; this result may be incomplete")
 	}
 
-	opened := probe.Scan(ctx, scanTargets, []int{23, 2323, 21, 5900, 5555}, 700*time.Millisecond, 128)
+	opened := markSMB1(ctx, probe.Scan(ctx, scanTargets, []int{23, 2323, 21, 5900, 5555, 445}, 700*time.Millisecond, 128))
 	neighbors := arp.neighbors
 	if len(scanTargets) > len(initialHosts) {
 		refreshed, err := lan.ReadARP(ctx)
@@ -645,6 +645,8 @@ func makeFindings(
 	for _, item := range opened {
 		name := deviceNames[item.IP]
 		switch item.Port {
+		case smb1Port:
+			findings = append(findings, report.Finding{ID: "smb1_enabled", Level: report.Caution, Points: 8, IP: item.IP.String(), Device: name})
 		case 23, 2323:
 			if _, exists := telnetSeen[item.IP]; exists {
 				continue
@@ -737,6 +739,8 @@ func makeFindings(
 			finding.Message = i18n.T(lang, finding.ID, finding.Device)
 		case "port_forward", "port_forward_risky":
 			finding.Message = i18n.T(lang, finding.ID, finding.Device, finding.Port)
+		case "smb1_enabled":
+			finding.Message = i18n.T(lang, finding.ID, finding.Device)
 		}
 	}
 	return findings
