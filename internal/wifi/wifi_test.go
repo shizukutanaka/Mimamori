@@ -71,6 +71,53 @@ func TestParseNmcli(t *testing.T) {
 	}
 }
 
+func TestParseWPACli(t *testing.T) {
+	fixture := func(ssid, state, keyManagement, pairwiseCipher, groupCipher string) string {
+		return strings.Join([]string{
+			"bssid=aa:bb:cc:dd:ee:ff",
+			"freq=2412",
+			"ssid=" + ssid,
+			"id=0",
+			"mode=station",
+			"pairwise_cipher=" + pairwiseCipher,
+			"group_cipher=" + groupCipher,
+			"key_mgmt=" + keyManagement,
+			"wpa_state=" + state,
+			"address=aa:bb:cc:dd:ee:ff",
+			"ip_address=192.168.1.42",
+		}, "\n")
+	}
+	tests := []struct {
+		name string
+		text string
+		want Security
+	}{
+		{name: "completed WPA2 PSK with CCMP", text: fixture("Home Wi-Fi", "COMPLETED", "WPA2-PSK", "CCMP", "CCMP"), want: Modern},
+		{name: "SAE", text: fixture("Home Wi-Fi", "COMPLETED", "SAE", "CCMP", "CCMP"), want: Modern},
+		{name: "OWE", text: fixture("Home Wi-Fi", "COMPLETED", "OWE", "CCMP", "CCMP"), want: Modern},
+		{name: "WPA2 enterprise", text: fixture("Enterprise", "COMPLETED", "WPA2/IEEE 802.1X/EAP", "CCMP", "CCMP"), want: Modern},
+		{name: "group TKIP is weak", text: fixture("Home Wi-Fi", "COMPLETED", "WPA2-PSK", "CCMP", "TKIP"), want: WPA1orTKIP},
+		{name: "WPA2 mixed with WPA1 is weak", text: fixture("Home Wi-Fi", "COMPLETED", "WPA2-PSK+WPA-PSK", "CCMP", "CCMP"), want: WPA1orTKIP},
+		{name: "WPA PSK with TKIP", text: fixture("Home Wi-Fi", "COMPLETED", "WPA-PSK", "TKIP", "TKIP"), want: WPA1orTKIP},
+		{name: "WPA enterprise is weak", text: fixture("Enterprise", "COMPLETED", "WPA/IEEE 802.1X/EAP", "CCMP", "CCMP"), want: WPA1orTKIP},
+		{name: "NONE is open", text: fixture("Guest", "COMPLETED", "NONE", "NONE", "NONE"), want: Open},
+		{name: "NONE with WEP cipher", text: fixture("Legacy", "COMPLETED", "NONE", "WEP-104", "NONE"), want: WEP},
+		{name: "dynamic WEP", text: fixture("Legacy", "COMPLETED", "IEEE 802.1X (no WPA)", "WEP-40", "WEP-40"), want: WEP},
+		{name: "scanning", text: fixture("Home Wi-Fi", "SCANNING", "WPA2-PSK", "CCMP", "CCMP"), want: Unknown},
+		{name: "disconnected", text: fixture("Home Wi-Fi", "DISCONNECTED", "WPA2-PSK", "CCMP", "CCMP"), want: Unknown},
+		{name: "empty status", text: "", want: Unknown},
+		{name: "empty key management", text: fixture("Home Wi-Fi", "COMPLETED", "", "CCMP", "CCMP"), want: Unknown},
+		{name: "SSID values do not affect classification", text: fixture("WEP TKIP NONE", "COMPLETED", "WPA2-PSK", "CCMP", "CCMP"), want: Modern},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := ParseWPACli(test.text); got != test.want {
+				t.Fatalf("ParseWPACli() = %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
 func TestParseNetsh(t *testing.T) {
 	tests := []struct {
 		name string

@@ -51,6 +51,9 @@ func Current(ctx context.Context) (Security, error) {
 		return Unknown, ErrLocationPermission
 	}
 	if err != nil {
+		if runtime.GOOS == "linux" {
+			return wpaCliSecurity(commandContext)
+		}
 		return Unknown, nil
 	}
 
@@ -135,6 +138,81 @@ func ParseNmcli(text string) Security {
 				return Unknown
 			}
 		}
+	}
+	return Unknown
+}
+
+func wpaCliSecurity(ctx context.Context) (Security, error) {
+	command := exec.CommandContext(ctx, "wpa_cli", "status")
+	command.Env = withLCAllC(os.Environ())
+
+	var errorOutput bytes.Buffer
+	command.Stderr = &errorOutput
+	output, err := command.Output()
+	if ctx.Err() != nil {
+		return Unknown, ctx.Err()
+	}
+	if err != nil {
+		return Unknown, nil
+	}
+	return ParseWPACli(string(output)), nil
+}
+
+func ParseWPACli(text string) Security {
+	var state, keyManagement, pairwiseCipher, groupCipher string
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSuffix(line, "\r")
+		key, value, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		switch key {
+		case "wpa_state":
+			state = value
+		case "key_mgmt":
+			keyManagement = value
+		case "pairwise_cipher":
+			pairwiseCipher = value
+		case "group_cipher":
+			groupCipher = value
+		}
+	}
+	if state != "COMPLETED" {
+		return Unknown
+	}
+
+	hasDynamicWEP, hasNone, hasWPA1 := false, false, false
+	for _, method := range strings.Split(keyManagement, "+") {
+		switch method {
+		case "IEEE 802.1X (no WPA)":
+			hasDynamicWEP = true
+		case "NONE":
+			hasNone = true
+		case "WPA-PSK", "WPA-NONE":
+			hasWPA1 = true
+		default:
+			if strings.HasPrefix(method, "WPA/") {
+				hasWPA1 = true
+			}
+		}
+	}
+	if hasDynamicWEP {
+		return WEP
+	}
+	if hasWPA1 {
+		return WPA1orTKIP
+	}
+	if hasNone {
+		if strings.HasPrefix(pairwiseCipher, "WEP") || strings.HasPrefix(groupCipher, "WEP") {
+			return WEP
+		}
+		return Open
+	}
+	if pairwiseCipher == "TKIP" || groupCipher == "TKIP" {
+		return WPA1orTKIP
+	}
+	if keyManagement != "" {
+		return Modern
 	}
 	return Unknown
 }
