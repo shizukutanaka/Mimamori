@@ -6,8 +6,8 @@ var upnpStackMessages = map[string]map[string]string{
 		"upnp_stack_vulnerable_fix": "Update the device's firmware. If no update exists, turn off UPnP on it (and on the router), and consider replacing it.",
 	},
 	"ja": {
-		"upnp_stack_vulnerable":     "「%s は、遠隔から悪用できる既知の脆弱性がある古い UPnP 部品（%s）を使っています。」",
-		"upnp_stack_vulnerable_fix": "「ファームウェアを更新してください。更新がない場合は、その機器とルーターの UPnP を無効にし、買い替えも検討してください。」",
+		"upnp_stack_vulnerable":     "%s は、遠隔から悪用できる既知の脆弱性がある古い UPnP 部品（%s）を使っています。",
+		"upnp_stack_vulnerable_fix": "ファームウェアを更新してください。更新がない場合は、その機器とルーターの UPnP を無効にし、買い替えも検討してください。",
 	},
 	"zh-Hans": {
 		"upnp_stack_vulnerable":     "设备 %s 使用的旧版 UPnP 组件（%s）存在已知的可被远程利用的漏洞。",
