@@ -36,7 +36,7 @@ Devices
   192.168.1.1      aa:bb:cc:dd:ee:ff  Router
 ```
 
-Exit codes: `0` means no danger finding (caution findings may still be present), `2` means at least one danger finding, and `1` means a flag or operational error.
+Exit codes: `0` means no danger finding (caution findings may still be present), `2` means at least one danger finding, and `1` means a flag or operational error; it is also returned when no device could be checked, and a corrupt history file is kept as `devices.json.corrupt`.
 
 ## Build from source
 
@@ -74,7 +74,7 @@ Windows では `mimamori.exe` を実行してください（例: `.\mimamori.exe
 
 言語はシステムの設定から自動で選ばれます。`--lang en` または `--lang ja` で指定でき、`--json` で整形済み JSON を出力できます。
 
-終了コード: `0` は危険な問題なし（注意事項が表示される場合があります）、`2` は危険な問題あり、`1` はオプションまたは動作上のエラーです。
+終了コード: `0` は危険な問題なし（注意事項が表示される場合があります）、`2` は危険な問題あり、`1` はオプションまたは動作上のエラーです。確認できる機器がなかった場合にも `1` が返され、壊れた履歴ファイルは `devices.json.corrupt` として残されます。
 
 ```text
 Mimamori — 家の安全診断

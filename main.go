@@ -2,8 +2,10 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -14,6 +16,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/shizukutanaka/Mimamori/internal/baseline"
 	"github.com/shizukutanaka/Mimamori/internal/console"
@@ -34,14 +37,23 @@ type deviceOutput struct {
 }
 
 type output struct {
-	Version  string           `json:"version"`
-	Score    int              `json:"score"`
-	Status   string           `json:"status"`
-	FirstRun bool             `json:"first_run"`
-	Gateway  string           `json:"gateway"`
-	Devices  []deviceOutput   `json:"devices"`
-	Findings []report.Finding `json:"findings"`
+	Version    string           `json:"version"`
+	Score      int              `json:"score"`
+	Status     string           `json:"status"`
+	FirstRun   bool             `json:"first_run"`
+	Incomplete bool             `json:"incomplete"`
+	Gateway    string           `json:"gateway"`
+	Devices    []deviceOutput   `json:"devices"`
+	Findings   []report.Finding `json:"findings"`
 }
+
+type historyLoadState uint8
+
+const (
+	historyLoadReady historyLoadState = iota
+	historyLoadQuarantined
+	historyLoadUnavailable
+)
 
 type runResult struct {
 	code  int
@@ -158,6 +170,10 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 	if discovery.err != nil {
 		fmt.Fprintf(stderr, "warning: UPnP discovery failed: %v\n", discovery.err)
 	}
+	incomplete := arp.err != nil || gateway.err != nil || discovery.err != nil
+	if incomplete && !*jsonOutput {
+		fmt.Fprintln(stderr, "warning: some checks could not run; this result may be incomplete")
+	}
 
 	descriptions, descriptionErrors := fetchDescriptions(ctx, discovery.responses)
 	for _, err := range descriptionErrors {
@@ -165,14 +181,31 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 	}
 
 	hosts := collectHosts(arp.neighbors, gatewayIP, discovery.responses)
+	if !hasScanHosts(hosts) {
+		fmt.Fprintln(stderr, "error: the scan could not see any device on your network; the result would not be reliable")
+		return finish(1)
+	}
 	opened := probe.Scan(ctx, hosts, []int{23, 2323, 21, 5900}, 700*time.Millisecond, 64)
 
 	store, existed, err := baseline.Load(*statePath)
 	firstRun := !existed
+	loadState := historyLoadReady
 	if err != nil {
-		fmt.Fprintf(stderr, "warning: cannot read device history; starting a new history: %v\n", err)
-		store = baseline.Store{Version: 1, Devices: make(map[string]baseline.Seen)}
 		firstRun = true
+		store = baseline.Store{Version: 1, Devices: make(map[string]baseline.Seen)}
+		if errors.Is(err, baseline.ErrInvalidJSON) {
+			backupPath, quarantineErr := baseline.Quarantine(*statePath)
+			if quarantineErr != nil {
+				loadState = historyLoadUnavailable
+				fmt.Fprintf(stderr, "warning: corrupt device history could not be moved to %s; history will not be saved: %v\n", backupPath, quarantineErr)
+			} else {
+				loadState = historyLoadQuarantined
+				fmt.Fprintf(stderr, "warning: corrupt device history moved to %s; starting a new history\n", backupPath)
+			}
+		} else {
+			loadState = historyLoadUnavailable
+			fmt.Fprintf(stderr, "warning: cannot read device history; history will not be saved this run: %v\n", err)
+		}
 	}
 
 	neighborByIP := make(map[netip.Addr]lan.Neighbor, len(arp.neighbors))
@@ -192,10 +225,6 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 		isNew := store.Observe(neighbor.MAC, host.String(), name, now)
 		newDevices[host] = !firstRun && isNew
 	}
-	stateError := baseline.Save(*statePath, store)
-	if stateError != nil {
-		fmt.Fprintf(stderr, "warning: cannot save device history: %v\n", stateError)
-	}
 
 	devices := make([]deviceOutput, 0, len(hosts))
 	for _, host := range hosts {
@@ -205,24 +234,25 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 		})
 	}
 
-	findings := makeFindings(opened, discovery.responses, descriptions, deviceNames, newDevices, lang)
+	findings := makeFindings(opened, discovery.responses, gatewayIP, descriptions, deviceNames, newDevices, lang)
 	status := report.Status(report.Score(findings), findings)
 	result := output{
-		Version: version, Score: report.Score(findings), Status: status, FirstRun: firstRun,
+		Version: version, Score: report.Score(findings), Status: status, FirstRun: firstRun, Incomplete: incomplete,
 		Gateway: gatewayString(gatewayIP), Devices: devices, Findings: findings,
 	}
-	if *jsonOutput {
-		encoder := json.NewEncoder(stdout)
-		encoder.SetIndent("", "  ")
-		if err := encoder.Encode(result); err != nil {
+	if err := writeOutput(stdout, result, *jsonOutput, lang); err != nil {
+		if *jsonOutput {
 			fmt.Fprintf(stderr, "warning: cannot write JSON output: %v\n", err)
+		} else {
+			fmt.Fprintf(stderr, "warning: cannot write output: %v\n", err)
+		}
+		return finish(1)
+	}
+	if shouldSaveHistory(true, firstRun, store, loadState) {
+		if err := baseline.Save(*statePath, store); err != nil {
+			fmt.Fprintf(stderr, "warning: cannot save device history: %v\n", err)
 			return finish(1)
 		}
-	} else {
-		renderText(stdout, result, lang)
-	}
-	if stateError != nil {
-		return finish(1)
 	}
 
 	for _, finding := range findings {
@@ -231,6 +261,38 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 		}
 	}
 	return finish(0)
+}
+
+func hasScanHosts(hosts []netip.Addr) bool {
+	return len(hosts) > 0
+}
+
+func shouldSaveHistory(outputSucceeded, firstRun bool, store baseline.Store, loadState historyLoadState) bool {
+	if !outputSucceeded || loadState == historyLoadUnavailable {
+		return false
+	}
+	return !firstRun || len(store.Devices) > 0
+}
+
+func writeOutput(writer io.Writer, result output, jsonMode bool, lang string) error {
+	var rendered bytes.Buffer
+	if jsonMode {
+		encoder := json.NewEncoder(&rendered)
+		encoder.SetIndent("", "  ")
+		if err := encoder.Encode(result); err != nil {
+			return err
+		}
+	} else {
+		renderText(&rendered, result, lang)
+	}
+	written, err := writer.Write(rendered.Bytes())
+	if err != nil {
+		return err
+	}
+	if written != rendered.Len() {
+		return io.ErrShortWrite
+	}
+	return nil
 }
 
 func gatewayString(ip netip.Addr) string {
@@ -327,10 +389,10 @@ func fetchDescriptions(ctx context.Context, responses []ssdp.Response) (map[neti
 
 func deviceName(lang string, ip netip.Addr, neighbor lan.Neighbor, gateway netip.Addr, descriptions map[netip.Addr]ssdp.Device) string {
 	if device, ok := descriptions[ip]; ok {
-		if name := strings.TrimSpace(device.FriendlyName); name != "" {
+		if name := sanitizeName(device.FriendlyName); name != "" {
 			return name
 		}
-		name := strings.TrimSpace(strings.TrimSpace(device.Manufacturer) + " " + strings.TrimSpace(device.ModelName))
+		name := sanitizeName(sanitizeName(device.Manufacturer) + " " + sanitizeName(device.ModelName))
 		if name != "" {
 			return name
 		}
@@ -344,9 +406,26 @@ func deviceName(lang string, ip netip.Addr, neighbor lan.Neighbor, gateway netip
 	return ip.String()
 }
 
+func sanitizeName(s string) string {
+	filtered := strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) || r >= 0x200B && r <= 0x200F ||
+			r >= 0x202A && r <= 0x202E || r >= 0x2066 && r <= 0x2069 || r == 0xFEFF {
+			return -1
+		}
+		return r
+	}, s)
+	name := strings.Join(strings.Fields(filtered), " ")
+	runes := []rune(name)
+	if len(runes) > 64 {
+		return string(runes[:64])
+	}
+	return name
+}
+
 func makeFindings(
 	opened []probe.Open,
 	responses []ssdp.Response,
+	gateway netip.Addr,
 	descriptions map[netip.Addr]ssdp.Device,
 	deviceNames map[netip.Addr]string,
 	newDevices map[netip.Addr]bool,
@@ -375,17 +454,33 @@ func makeFindings(
 		}
 	}
 
+	isIGD := func(response ssdp.Response) bool {
+		if ssdp.IsGateway(response) {
+			return true
+		}
+		if device, ok := descriptions[response.IP]; ok && strings.Contains(strings.ToLower(device.DeviceType), "internetgatewaydevice") {
+			return true
+		}
+		return false
+	}
 	var upnpIP string
 	var upnpDevice string
-	for _, response := range responses {
-		isGateway := ssdp.IsGateway(response)
-		if device, ok := descriptions[response.IP]; ok && strings.Contains(strings.ToLower(device.DeviceType), "internetgatewaydevice") {
-			isGateway = true
+	if gateway.IsValid() {
+		if device, ok := descriptions[gateway]; ok && strings.Contains(strings.ToLower(device.DeviceType), "internetgatewaydevice") {
+			upnpIP = gateway.String()
+			upnpDevice = deviceNames[gateway]
 		}
-		if isGateway {
+	}
+	for _, response := range responses {
+		if gateway.IsValid() && response.IP != gateway {
+			continue
+		}
+		if upnpIP == "" && isIGD(response) {
 			upnpIP = response.IP.String()
 			upnpDevice = deviceNames[response.IP]
-			break
+			if !gateway.IsValid() {
+				break
+			}
 		}
 	}
 	if upnpIP != "" {

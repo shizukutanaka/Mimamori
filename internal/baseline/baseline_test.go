@@ -1,6 +1,7 @@
 package baseline
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -49,5 +50,51 @@ func TestLoadMissingFile(t *testing.T) {
 	store, existed, err := Load(filepath.Join(t.TempDir(), "missing.json"))
 	if err != nil || existed || store.Devices == nil {
 		t.Fatalf("Load() = %#v, existed=%v, err=%v", store, existed, err)
+	}
+}
+
+func TestLoadDistinguishesParseAndReadErrors(t *testing.T) {
+	directory := t.TempDir()
+	corruptPath := filepath.Join(directory, "corrupt.json")
+	if err := os.WriteFile(corruptPath, []byte("{"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	_, existed, err := Load(corruptPath)
+	if !existed || !errors.Is(err, ErrInvalidJSON) {
+		t.Fatalf("corrupt Load() existed=%v, err=%v; want existed and parse error", existed, err)
+	}
+
+	_, existed, err = Load(directory)
+	if err == nil || existed || errors.Is(err, ErrInvalidJSON) {
+		t.Fatalf("directory Load() existed=%v, err=%v; want read error without existence", existed, err)
+	}
+}
+
+func TestQuarantineOverwritesPreviousBackup(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "devices.json")
+	corrupt := []byte("{invalid")
+	if err := os.WriteFile(path, corrupt, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path+".corrupt", []byte("older backup"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	quarantinePath, err := Quarantine(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if quarantinePath != path+".corrupt" {
+		t.Fatalf("Quarantine() path = %q, want %q", quarantinePath, path+".corrupt")
+	}
+	got, err := os.ReadFile(quarantinePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(corrupt) {
+		t.Fatalf("quarantine contents = %q, want %q", got, corrupt)
+	}
+	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("original history still exists or stat failed: %v", err)
 	}
 }

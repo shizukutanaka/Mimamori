@@ -3,11 +3,14 @@ package baseline
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 )
+
+var ErrInvalidJSON = errors.New("invalid device history JSON")
 
 type Seen struct {
 	FirstSeen time.Time `json:"first_seen"`
@@ -35,7 +38,7 @@ func Load(path string) (Store, bool, error) {
 	}
 	var store Store
 	if err := json.Unmarshal(data, &store); err != nil {
-		return Store{}, true, err
+		return Store{}, true, fmt.Errorf("%w: %v", ErrInvalidJSON, err)
 	}
 	if store.Devices == nil {
 		store.Devices = make(map[string]Seen)
@@ -97,6 +100,17 @@ func Save(path string, store Store) error {
 		return err
 	}
 	return os.Rename(tempPath, path)
+}
+
+func Quarantine(path string) (string, error) {
+	quarantinePath := path + ".corrupt"
+	if err := os.Remove(quarantinePath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return quarantinePath, err
+	}
+	if err := os.Rename(path, quarantinePath); err != nil {
+		return quarantinePath, err
+	}
+	return quarantinePath, nil
 }
 
 func DefaultPath() (string, error) {
