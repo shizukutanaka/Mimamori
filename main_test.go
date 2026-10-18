@@ -145,8 +145,8 @@ func TestVulnerableUPnPStackMessageFormatting(t *testing.T) {
 		{
 			lang:        "ja",
 			device:      "ルーター",
-			wantMessage: "「ルーター は、遠隔から悪用できる既知の脆弱性がある古い UPnP 部品（libupnp 1.6.6）を使っています。」",
-			wantFix:     "「ファームウェアを更新してください。更新がない場合は、その機器とルーターの UPnP を無効にし、買い替えも検討してください。」",
+			wantMessage: "「ルーター」は、遠隔から悪用できる既知の脆弱性がある古い UPnP 部品（libupnp 1.6.6）を使っています。",
+			wantFix:     "ファームウェアを更新してください。更新がない場合は、その機器とルーターの UPnP を無効にし、買い替えも検討してください。",
 		},
 	}
 	for _, test := range tests {
