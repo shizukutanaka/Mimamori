@@ -211,10 +211,6 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 		}
 		scanTargets = mergeHosts(initialHosts, lan.SweepHosts(prefixes, gatewayIP))
 	}
-	if incomplete && !*jsonOutput {
-		fmt.Fprintln(stderr, "warning: some checks could not run; this result may be incomplete")
-	}
-
 	opened := probe.Scan(ctx, scanTargets, []int{23, 2323, 21, 5900, 5555}, 700*time.Millisecond, 128)
 	neighbors := arp.neighbors
 	if len(scanTargets) > len(initialHosts) {
@@ -227,13 +223,10 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 	}
 	canReport, forceIncomplete := reportable(scanObservedNetwork(neighbors, discovery.responses, opened), wifiFs)
 	if forceIncomplete {
-		if !incomplete && !*jsonOutput {
-			fmt.Fprintln(stderr, "warning: some checks could not run; this result may be incomplete")
-		}
 		incomplete = true
 	}
 	if !canReport {
-		fmt.Fprintln(stderr, "error: the scan could not see any device on your network; the result would not be reliable")
+		reportNoDevices(stderr, incomplete, *jsonOutput)
 		return finish(1)
 	}
 
@@ -294,7 +287,7 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 		WiFiLocationRequired: errors.Is(wifiCheck.err, wifi.ErrLocationPermission),
 		Gateway:              gatewayString(gatewayIP), Devices: devices, Findings: findings,
 	}
-	if err := writeOutput(stdout, result, *jsonOutput, lang); err != nil {
+	if err := writeOutputWithIncompleteWarning(stdout, stderr, result, *jsonOutput, lang); err != nil {
 		if *jsonOutput {
 			fmt.Fprintf(stderr, "warning: cannot write JSON output: %v\n", err)
 		} else {
@@ -363,6 +356,23 @@ func writeOutput(writer io.Writer, result output, jsonMode bool, lang string) er
 		return io.ErrShortWrite
 	}
 	return nil
+}
+
+func writeOutputWithIncompleteWarning(stdout, stderr io.Writer, result output, jsonMode bool, lang string) error {
+	err := writeOutput(stdout, result, jsonMode, lang)
+	warnIncomplete(stderr, result.Incomplete, jsonMode, err == nil && !jsonMode)
+	return err
+}
+
+func reportNoDevices(stderr io.Writer, incomplete, jsonMode bool) {
+	warnIncomplete(stderr, incomplete, jsonMode, false)
+	fmt.Fprintln(stderr, "error: the scan could not see any device on your network; the result would not be reliable")
+}
+
+func warnIncomplete(stderr io.Writer, incomplete, jsonMode, localizedNoticeShown bool) {
+	if incomplete && (jsonMode || !localizedNoticeShown) {
+		fmt.Fprintln(stderr, "warning: some checks could not run; this result may be incomplete")
+	}
 }
 
 func resolveLanguage(flagValue string, getenv func(string) string) (string, error) {
