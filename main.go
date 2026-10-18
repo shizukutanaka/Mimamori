@@ -203,11 +203,15 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 
 	initialHosts := collectHosts(arp.neighbors, gatewayIP, discovery.responses)
 	scanTargets := initialHosts
+	var prefixes []netip.Prefix
+	prefixesFailed := false
 	if gatewayIP.IsValid() {
-		prefixes, err := lan.LocalPrefixes()
+		var err error
+		prefixes, err = lan.LocalPrefixes()
 		if err != nil {
 			fmt.Fprintf(stderr, "warning: cannot list network interfaces: %v\n", err)
 			incomplete = true
+			prefixesFailed = true
 		}
 		scanTargets = mergeHosts(initialHosts, lan.SweepHosts(prefixes, gatewayIP))
 	}
@@ -236,6 +240,11 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 		printNoDeviceError(stderr, lang, wifiCheck.err)
 		return finish(1)
 	}
+
+	if prefixesFailed {
+		prefixes = nil
+	}
+	neighbors = homeNeighbors(neighbors, prefixes, gatewayIP)
 
 	store, existed, err := baseline.Load(*statePath)
 	firstRun := !existed
