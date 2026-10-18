@@ -652,7 +652,7 @@ func lookupDeviceNames(ctx context.Context, hosts []netip.Addr) map[netip.Addr]s
 	}()
 	go func() {
 		defer lookups.Done()
-		netbiosNames = netbios.Names(lookupCtx, hosts, time.Second)
+		netbiosNames = netbios.Names(ctx, hosts, time.Second)
 	}()
 	lookups.Wait()
 	return mergeDeviceNames(mdnsNames, netbiosNames)

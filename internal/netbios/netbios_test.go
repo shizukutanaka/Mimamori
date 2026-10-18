@@ -150,7 +150,7 @@ func TestNames(t *testing.T) {
 		}
 	})
 
-	t.Run("reply window starts after all queries are sent", func(t *testing.T) {
+	t.Run("queued reply is read after a slow send", func(t *testing.T) {
 		previousHook := afterNameQuerySend
 		sends := 0
 		afterNameQuerySend = func() {
@@ -170,13 +170,44 @@ func TestNames(t *testing.T) {
 				[]testNameEntry{{name: "DESKTOP-AB12CD", suffix: 0}},
 			)
 		})
-		hosts := []netip.Addr{host, netip.MustParseAddr("127.0.0.2")}
-		got := names(context.Background(), hosts, port, netip.Addr.IsLoopback, 10*time.Millisecond)
+		ctx := context.Background()
+		if _, ok := ctx.Deadline(); ok {
+			t.Fatal("test context unexpectedly has a deadline")
+		}
+		got := names(ctx, []netip.Addr{host}, port, netip.Addr.IsLoopback, 10*time.Millisecond)
 		if got[host] != "DESKTOP-AB12CD" {
 			t.Fatalf("names() = %v, want %q", got, "DESKTOP-AB12CD")
 		}
-		if sends != len(hosts) {
-			t.Fatalf("sent %d queries, want %d", sends, len(hosts))
+		if sends != 1 {
+			t.Fatalf("sent %d queries, want 1", sends)
+		}
+	})
+
+	t.Run("send phase is bounded by timeout", func(t *testing.T) {
+		previousHook := afterNameQuerySend
+		sends := 0
+		afterNameQuerySend = func() {
+			sends++
+			time.Sleep(15 * time.Millisecond)
+		}
+		t.Cleanup(func() { afterNameQuerySend = previousHook })
+
+		port := startResponder(t, nil, func(query []byte) []byte {
+			return makeNodeStatusResponse(
+				binary.BigEndian.Uint16(query[:2]),
+				0x8000,
+				0x0021,
+				1,
+				[]testNameEntry{{name: "DESKTOP-AB12CD", suffix: 0}},
+			)
+		})
+		hosts := make([]netip.Addr, 10)
+		for index := range hosts {
+			hosts[index] = netip.AddrFrom4([4]byte{127, 0, 0, byte(index + 1)})
+		}
+		_ = names(context.Background(), hosts, port, netip.Addr.IsLoopback, 20*time.Millisecond)
+		if sends > 3 {
+			t.Fatalf("sent %d queries, want at most 3", sends)
 		}
 	})
 

@@ -87,8 +87,9 @@ func names(
 	defer conn.Close()
 
 	queries := make(map[netip.Addr]uint16)
+	sendStart := time.Now()
 	for _, host := range hosts {
-		if ctx.Err() != nil {
+		if ctx.Err() != nil || time.Since(sendStart) >= timeout {
 			break
 		}
 		if !host.Is4() || !accept(host) {
