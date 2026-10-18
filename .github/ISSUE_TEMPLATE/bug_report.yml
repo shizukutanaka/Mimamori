@@ -1,0 +1,58 @@
+name: Bug report / 不具合の報告
+description: Wrong result, false alarm, missed risk, crash, or translation problem. Any language is welcome.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for testing Mimamori on a real network. Reports in any language are welcome.
+        **Security vulnerabilities:** do not report them here. Follow the [security policy](https://github.com/shizukutanaka/Mimamori/security/policy).
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened? / 何が起きましたか
+      description: For a false alarm or a missed risk, say which device it was (for example, "my printer", "an IP camera").
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect? / 期待した結果
+  - type: input
+    id: os
+    attributes:
+      label: OS, version, and display language / OS・バージョン・表示言語
+      placeholder: Windows 11 24H2 (Japanese), macOS 15.5 (English), Raspberry Pi OS 12 (32-bit)
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Mimamori version (`mimamori -version`)
+      placeholder: v0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: launch
+    attributes:
+      label: How did you run it? / 起動方法
+      options:
+        - Double-click / ダブルクリック
+        - Terminal or command prompt / ターミナル・コマンドプロンプト
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output / 出力
+      description: |
+        Paste the output of `mimamori --json` (or the text output). **Before posting, replace every MAC address (like `a4:5e:60:12:34:56`) and device name with `x`.** A router's MAC address can help others find your home's location, and device names often contain people's names.
+        貼る前に、MAC アドレス（`a4:5e:60:12:34:56` のような値）と機器名をすべて `x` に置き換えてください。ルーターの MAC アドレスから自宅の場所を推測されるおそれがあり、機器名には家族の名前が入っていることがあります。
+      render: text
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy / プライバシー
+      options:
+        - label: I removed MAC addresses and device names from the output. / 出力から MAC アドレスと機器名を消しました。
+          required: true
