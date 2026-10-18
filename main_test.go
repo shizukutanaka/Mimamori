@@ -261,20 +261,20 @@ func TestFetchPortMappingsQueryability(t *testing.T) {
 	}
 
 	t.Run("no description", func(t *testing.T) {
-		mappings, err := fetchPortMappings(context.Background(), nil, gateway, nil, nil)
-		if err != nil || mappings != nil {
-			t.Fatalf("fetchPortMappings() = %#v, %v; want nil, nil", mappings, err)
+		mappings, queried, err := fetchPortMappings(context.Background(), nil, gateway, nil, nil)
+		if err != nil || mappings != nil || queried {
+			t.Fatalf("fetchPortMappings() = %#v, %t, %v; want nil, false, nil", mappings, queried, err)
 		}
 	})
 
 	t.Run("non-IGD description without IGD responder", func(t *testing.T) {
 		description := routerDescription("")
 		description.Device.DeviceType = "urn:schemas-upnp-org:device:Basic:1"
-		mappings, err := fetchPortMappings(context.Background(), nil, gateway, nil, map[netip.Addr]ssdp.Description{
+		mappings, queried, err := fetchPortMappings(context.Background(), nil, gateway, nil, map[netip.Addr]ssdp.Description{
 			gateway: description,
 		})
-		if err != nil || mappings != nil {
-			t.Fatalf("fetchPortMappings() = %#v, %v; want nil, nil", mappings, err)
+		if err != nil || mappings != nil || queried {
+			t.Fatalf("fetchPortMappings() = %#v, %t, %v; want nil, false, nil", mappings, queried, err)
 		}
 	})
 
@@ -292,19 +292,19 @@ func TestFetchPortMappingsQueryability(t *testing.T) {
 			},
 			Location: "http://192.168.1.1:1900/description.xml",
 		}
-		_, err := fetchPortMappings(context.Background(), nil, gateway, nil, map[netip.Addr]ssdp.Description{
+		_, queried, err := fetchPortMappings(context.Background(), nil, gateway, nil, map[netip.Addr]ssdp.Description{
 			gateway: description,
 		})
-		if err == nil || err.Error() != "router advertises UPnP but its port forwarding list cannot be queried" {
+		if queried || err == nil || err.Error() != "router advertises UPnP but its port forwarding list cannot be queried" {
 			t.Fatalf("fetchPortMappings() error = %v; want rejected control URL error", err)
 		}
 	})
 
 	t.Run("IGD without WAN service", func(t *testing.T) {
-		_, err := fetchPortMappings(context.Background(), nil, gateway, nil, map[netip.Addr]ssdp.Description{
+		_, queried, err := fetchPortMappings(context.Background(), nil, gateway, nil, map[netip.Addr]ssdp.Description{
 			gateway: routerDescription(""),
 		})
-		if err == nil || err.Error() != "router advertises UPnP but its port forwarding list cannot be queried" {
+		if queried || err == nil || err.Error() != "router advertises UPnP but its port forwarding list cannot be queried" {
 			t.Fatalf("fetchPortMappings() error = %v", err)
 		}
 	})
@@ -324,10 +324,10 @@ func TestFetchPortMappingsQueryability(t *testing.T) {
 					Request:    request,
 				}, nil
 			})}
-			_, err := fetchPortMappings(context.Background(), client, gateway, nil, map[netip.Addr]ssdp.Description{
+			_, queried, err := fetchPortMappings(context.Background(), client, gateway, nil, map[netip.Addr]ssdp.Description{
 				gateway: routerDescription(controlURL),
 			})
-			if err == nil || err.Error() != "router advertises UPnP but its port forwarding list cannot be queried" {
+			if queried || err == nil || err.Error() != "router advertises UPnP but its port forwarding list cannot be queried" {
 				t.Fatalf("fetchPortMappings() error = %v", err)
 			}
 			if requests != 0 {
@@ -335,6 +335,28 @@ func TestFetchPortMappingsQueryability(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("successful default gateway query", func(t *testing.T) {
+		requests := 0
+		client := &http.Client{Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
+			requests++
+			return &http.Response{
+				StatusCode: http.StatusInternalServerError,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader(`<UPnPError><errorCode>713</errorCode></UPnPError>`)),
+				Request:    request,
+			}, nil
+		})}
+		mappings, queried, err := fetchPortMappings(context.Background(), client, gateway, nil, map[netip.Addr]ssdp.Description{
+			gateway: routerDescription("/control"),
+		})
+		if err != nil || !queried || len(mappings) != 0 {
+			t.Fatalf("fetchPortMappings() = %#v, %t, %v; want empty mappings, true, nil", mappings, queried, err)
+		}
+		if requests != 1 {
+			t.Fatalf("HTTP requests = %d, want 1", requests)
+		}
+	})
 }
 
 type roundTripperFunc func(*http.Request) (*http.Response, error)
@@ -768,8 +790,80 @@ func TestWriteOutputIncludesIncompleteJSON(t *testing.T) {
 	}
 }
 
+func TestRenderTextCheckedLine(t *testing.T) {
+	tests := []struct {
+		name   string
+		lang   string
+		result output
+		want   string
+	}{
+		{
+			name: "all checks",
+			lang: "en",
+			result: output{
+				Score: 100, Status: "safe", Devices: make([]deviceOutput, 12),
+				Checks: checkedSummary{PortForwards: true, WiFi: true},
+			},
+			want: "Checked: 12 devices · risky ports · router port forwards · Wi-Fi encryption",
+		},
+		{
+			name: "devices and risky ports only",
+			lang: "en",
+			result: output{
+				Score: 100, Status: "safe", Devices: []deviceOutput{{}},
+			},
+			want: "Checked: 1 device · risky ports",
+		},
+		{
+			name: "Japanese",
+			lang: "ja",
+			result: output{
+				Score: 100, Status: "safe", Devices: make([]deviceOutput, 12),
+				Checks: checkedSummary{PortForwards: true, WiFi: true},
+			},
+			want: "確認したこと: 機器 12台・危険なポート・ルーターのポート転送・Wi-Fi の暗号化",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var buffer bytes.Buffer
+			renderText(&buffer, test.result, test.lang)
+			lines := strings.Split(strings.TrimSuffix(buffer.String(), "\n"), "\n")
+			if len(lines) < 3 {
+				t.Fatalf("renderText() output has too few lines: %q", buffer.String())
+			}
+			if lines[2] != test.want {
+				t.Fatalf("checked line = %q, want %q", lines[2], test.want)
+			}
+		})
+	}
+}
+
+func TestWriteOutputOmitsCheckedLineFromJSON(t *testing.T) {
+	var buffer bytes.Buffer
+	result := output{
+		Checks:  checkedSummary{PortForwards: true, WiFi: true},
+		Devices: []deviceOutput{{}},
+	}
+	if err := writeOutput(&buffer, result, true, "en"); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(buffer.String(), "Checked:") {
+		t.Fatalf("JSON output contains the human checked line: %s", buffer.String())
+	}
+	var encoded map[string]any
+	if err := json.Unmarshal(buffer.Bytes(), &encoded); err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := encoded["checks"]; exists {
+		t.Fatal("JSON output includes the rendering-only checks field")
+	}
+}
+
 func TestRenderTextShowsLocalizedIncompleteNotice(t *testing.T) {
 	scoreLine := i18n.T("ja", "score", i18n.T("ja", "safe"), 100)
+	checkedLine := i18n.T("ja", "checked_devices", i18n.CheckedDeviceCount("ja", 0)) +
+		i18n.T("ja", "checked_sep") + i18n.T("ja", "checked_ports")
 	notice := i18n.T("ja", "incomplete_notice")
 	for _, test := range []struct {
 		name       string
@@ -788,9 +882,15 @@ func TestRenderTextShowsLocalizedIncompleteNotice(t *testing.T) {
 			if lines[1] != scoreLine {
 				t.Fatalf("score line = %q, want %q", lines[1], scoreLine)
 			}
+			if lines[2] != checkedLine {
+				t.Fatalf("line after score = %q, want checked summary %q", lines[2], checkedLine)
+			}
 			if test.incomplete {
-				if lines[2] != notice {
-					t.Fatalf("line after score = %q, want notice %q", lines[2], notice)
+				if len(lines) < 4 {
+					t.Fatalf("renderText() output has too few lines: %q", buffer.String())
+				}
+				if lines[3] != notice {
+					t.Fatalf("line after checked summary = %q, want notice %q", lines[3], notice)
 				}
 				return
 			}
@@ -867,6 +967,8 @@ func TestWiFiFindings(t *testing.T) {
 
 func TestWiFiLocationRequiredTextAndJSON(t *testing.T) {
 	scoreLine := i18n.T("ja", "score", i18n.T("ja", "safe"), 100)
+	checkedLine := i18n.T("ja", "checked_devices", i18n.CheckedDeviceCount("ja", 0)) +
+		i18n.T("ja", "checked_sep") + i18n.T("ja", "checked_ports")
 	incompleteNotice := i18n.T("ja", "incomplete_notice")
 	locationNotice := i18n.T("ja", "wifi_location_notice")
 
@@ -875,11 +977,11 @@ func TestWiFiLocationRequiredTextAndJSON(t *testing.T) {
 		Score: 100, Status: "safe", Incomplete: true, WiFiLocationRequired: true,
 	}, "ja")
 	lines := strings.Split(strings.TrimSuffix(textOutput.String(), "\n"), "\n")
-	if len(lines) < 4 {
+	if len(lines) < 5 {
 		t.Fatalf("renderText() output has too few lines: %q", textOutput.String())
 	}
-	if lines[1] != scoreLine || lines[2] != incompleteNotice || lines[3] != locationNotice {
-		t.Fatalf("notice order = %q, %q, %q; want score, incomplete notice, location notice", lines[1], lines[2], lines[3])
+	if lines[1] != scoreLine || lines[2] != checkedLine || lines[3] != incompleteNotice || lines[4] != locationNotice {
+		t.Fatalf("notice order = %q, %q, %q, %q; want score, checked summary, incomplete notice, location notice", lines[1], lines[2], lines[3], lines[4])
 	}
 
 	var noLocationNotice bytes.Buffer

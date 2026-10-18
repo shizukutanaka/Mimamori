@@ -163,3 +163,53 @@ func TestWiFiLocationNoticeCatalogCoverage(t *testing.T) {
 		}
 	}
 }
+
+func TestCheckedCatalogCoverage(t *testing.T) {
+	keys := []string{
+		"checked_devices", "checked_ports", "checked_forwards", "checked_wifi", "checked_sep",
+	}
+	for _, lang := range Supported() {
+		for _, key := range keys {
+			if value, ok := messages[lang][key]; !ok || value == "" {
+				t.Errorf("%s catalog is missing %q", lang, key)
+			}
+		}
+	}
+}
+
+func TestCheckedDeviceCount(t *testing.T) {
+	tests := []struct {
+		lang  string
+		count int
+		want  string
+	}{
+		{lang: "en", count: 1, want: "1 device"},
+		{lang: "en", count: 2, want: "2 devices"},
+		{lang: "ja", count: 12, want: "12台"},
+		{lang: "zh-Hans", count: 12, want: "12 台设备"},
+		{lang: "zh-Hant", count: 12, want: "12 台裝置"},
+		{lang: "es", count: 1, want: "1 dispositivo"},
+		{lang: "es", count: 2, want: "2 dispositivos"},
+		{lang: "pt", count: 1, want: "1 dispositivo"},
+		{lang: "pt", count: 2, want: "2 dispositivos"},
+		{lang: "fr", count: 1, want: "1 appareil"},
+		{lang: "fr", count: 2, want: "2 appareils"},
+		{lang: "de", count: 1, want: "1 Gerät"},
+		{lang: "de", count: 2, want: "2 Geräte"},
+		{lang: "ru", count: 1, want: "1 устройство"},
+		{lang: "ru", count: 2, want: "2 устройства"},
+		{lang: "ru", count: 5, want: "5 устройств"},
+		{lang: "ru", count: 11, want: "11 устройств"},
+		{lang: "ru", count: 21, want: "21 устройство"},
+		{lang: "ko", count: 12, want: "기기 12대"},
+		{lang: "id", count: 12, want: "12 perangkat"},
+		{lang: "unknown", count: 1, want: "1 device"},
+	}
+	for _, test := range tests {
+		t.Run(test.lang, func(t *testing.T) {
+			if got := CheckedDeviceCount(test.lang, test.count); got != test.want {
+				t.Fatalf("CheckedDeviceCount(%q, %d) = %q, want %q", test.lang, test.count, got, test.want)
+			}
+		})
+	}
+}
