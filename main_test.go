@@ -5,6 +5,7 @@ import (
 	"net/netip"
 	"testing"
 
+	"github.com/shizukutanaka/Mimamori/internal/i18n"
 	"github.com/shizukutanaka/Mimamori/internal/lan"
 	"github.com/shizukutanaka/Mimamori/internal/probe"
 	"github.com/shizukutanaka/Mimamori/internal/report"
@@ -14,7 +15,7 @@ import (
 func TestMakeFindings(t *testing.T) {
 	ip := netip.MustParseAddr("192.168.1.10")
 	newIP := netip.MustParseAddr("192.168.1.11")
-	for _, lang := range []string{"en", "ja"} {
+	for _, lang := range i18n.Supported() {
 		t.Run(lang, func(t *testing.T) {
 			findings := makeFindings(
 				[]probe.Open{
@@ -50,6 +51,31 @@ func TestMakeFindings(t *testing.T) {
 			}
 			if got := report.Score(findings); got != 51 {
 				t.Fatalf("score = %d, want 51", got)
+			}
+		})
+	}
+}
+
+func TestResolveLanguage(t *testing.T) {
+	tests := []struct {
+		value string
+		env   map[string]string
+		want  string
+		err   bool
+	}{
+		{"auto", map[string]string{"LANG": "en_US.UTF-8"}, "en", false},
+		{"pt-BR", nil, "pt", false},
+		{"zh_TW", nil, "zh-Hant", false},
+		{"klingon", nil, "", true},
+	}
+	for _, test := range tests {
+		t.Run(test.value, func(t *testing.T) {
+			got, err := resolveLanguage(test.value, func(key string) string { return test.env[key] })
+			if (err != nil) != test.err {
+				t.Fatalf("resolveLanguage(%q) error = %v, want error %t", test.value, err, test.err)
+			}
+			if got != test.want {
+				t.Fatalf("resolveLanguage(%q) = %q, want %q", test.value, got, test.want)
 			}
 		})
 	}

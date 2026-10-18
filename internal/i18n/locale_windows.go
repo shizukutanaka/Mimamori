@@ -6,9 +6,24 @@ import (
 )
 
 func systemLocale() string {
-	procedure := syscall.NewLazyDLL("kernel32.dll").NewProc("GetUserDefaultLocaleName")
+	kernel32 := syscall.NewLazyDLL("kernel32.dll")
 	var buffer [85]uint16
-	result, _, _ := procedure.Call(uintptr(unsafe.Pointer(&buffer[0])), uintptr(len(buffer)))
+	languageID, _, _ := kernel32.NewProc("GetUserDefaultUILanguage").Call()
+	if languageID != 0 {
+		result, _, _ := kernel32.NewProc("LCIDToLocaleName").Call(
+			uintptr(uint32(languageID)),
+			uintptr(unsafe.Pointer(&buffer[0])),
+			uintptr(len(buffer)),
+			0,
+		)
+		if result != 0 {
+			return syscall.UTF16ToString(buffer[:])
+		}
+	}
+	result, _, _ := kernel32.NewProc("GetUserDefaultLocaleName").Call(
+		uintptr(unsafe.Pointer(&buffer[0])),
+		uintptr(len(buffer)),
+	)
 	if result == 0 {
 		return ""
 	}
