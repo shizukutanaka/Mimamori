@@ -1,6 +1,7 @@
 package report
 
 import (
+	"math/big"
 	"net/netip"
 	"sort"
 )
@@ -24,17 +25,18 @@ type Finding struct {
 }
 
 func Score(findings []Finding) int {
-	score := 100
+	var total, points big.Int
 	for _, finding := range findings {
-		score -= finding.Points
+		points.SetInt64(int64(finding.Points))
+		total.Add(&total, &points)
 	}
-	if score < 0 {
+	if total.Cmp(big.NewInt(100)) >= 0 {
 		return 0
 	}
-	if score > 100 {
+	if total.Sign() <= 0 {
 		return 100
 	}
-	return score
+	return 100 - int(total.Int64())
 }
 
 func Status(score int, findings []Finding) string {
@@ -50,19 +52,68 @@ func Status(score int, findings []Finding) string {
 }
 
 func Sort(findings []Finding) {
-	sort.Slice(findings, func(i, j int) bool {
+	sort.SliceStable(findings, func(i, j int) bool {
 		left, right := findings[i], findings[j]
 		if left.Level != right.Level {
-			return left.Level == Danger
+			leftRank, rightRank := levelRank(left.Level), levelRank(right.Level)
+			if leftRank != rightRank {
+				return leftRank < rightRank
+			}
+			return left.Level < right.Level
 		}
 		if left.Points != right.Points {
 			return left.Points > right.Points
 		}
-		leftIP, leftErr := netip.ParseAddr(left.IP)
-		rightIP, rightErr := netip.ParseAddr(right.IP)
-		if leftErr == nil && rightErr == nil && leftIP != rightIP {
-			return leftIP.Less(rightIP)
+		if left.ID != right.ID {
+			return left.ID < right.ID
 		}
-		return left.IP < right.IP
+		if order := compareIP(left.IP, right.IP); order != 0 {
+			return order < 0
+		}
+		if left.Port != right.Port {
+			return left.Port < right.Port
+		}
+		if left.Device != right.Device {
+			return left.Device < right.Device
+		}
+		if left.Message != right.Message {
+			return left.Message < right.Message
+		}
+		return left.Fix < right.Fix
 	})
+}
+
+func levelRank(level Level) int {
+	switch level {
+	case Danger:
+		return 0
+	case Caution:
+		return 1
+	default:
+		return 2
+	}
+}
+
+func compareIP(left, right string) int {
+	leftAddr, leftErr := netip.ParseAddr(left)
+	rightAddr, rightErr := netip.ParseAddr(right)
+	if leftErr == nil && rightErr == nil {
+		if leftAddr != rightAddr {
+			if leftAddr.Less(rightAddr) {
+				return -1
+			}
+			return 1
+		}
+	} else if leftErr == nil {
+		return -1
+	} else if rightErr == nil {
+		return 1
+	}
+	if left < right {
+		return -1
+	}
+	if left > right {
+		return 1
+	}
+	return 0
 }
