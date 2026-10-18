@@ -233,7 +233,7 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 		incomplete = true
 	}
 	if !canReport {
-		fmt.Fprintln(stderr, "error: the scan could not see any device on your network; the result would not be reliable")
+		printNoDeviceError(stderr, lang, wifiCheck.err)
 		return finish(1)
 	}
 
@@ -315,6 +315,13 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 		}
 	}
 	return finish(0)
+}
+
+func printNoDeviceError(writer io.Writer, lang string, wifiErr error) {
+	fmt.Fprintln(writer, "error: the scan could not see any device on your network; the result would not be reliable")
+	if errors.Is(wifiErr, wifi.ErrLocationPermission) {
+		fmt.Fprintln(writer, i18n.T(lang, "wifi_location_notice"))
+	}
 }
 
 func printScanningNotice(writer io.Writer, lang string, jsonOutput bool) {

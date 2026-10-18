@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/netip"
@@ -913,6 +914,34 @@ func TestWiFiLocationRequiredTextAndJSON(t *testing.T) {
 			}
 			if test.present && value != true {
 				t.Fatalf("JSON wifi_location_required = %#v, want true", value)
+			}
+		})
+	}
+}
+
+func TestPrintNoDeviceError(t *testing.T) {
+	const errorLine = "error: the scan could not see any device on your network; the result would not be reliable"
+	locationNotice := i18n.T("ja", "wifi_location_notice")
+	tests := []struct {
+		name       string
+		wifiErr    error
+		wantNotice bool
+	}{
+		{name: "location permission", wifiErr: wifi.ErrLocationPermission, wantNotice: true},
+		{name: "wrapped location permission", wifiErr: fmt.Errorf("x: %w", wifi.ErrLocationPermission), wantNotice: true},
+		{name: "nil error"},
+		{name: "other error", wifiErr: context.Canceled},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var output bytes.Buffer
+			printNoDeviceError(&output, "ja", test.wifiErr)
+			want := errorLine + "\n"
+			if test.wantNotice {
+				want += locationNotice + "\n"
+			}
+			if got := output.String(); got != want {
+				t.Fatalf("printNoDeviceError() = %q, want %q", got, want)
 			}
 		})
 	}

@@ -195,7 +195,12 @@ func ParseNetsh(text string) Security {
 }
 
 func NetshNeedsLocation(text string) bool {
-	return strings.Contains(text, "ms-settings:privacy-location")
+	for _, line := range strings.Split(text, "\n") {
+		if strings.TrimSpace(line) == "ms-settings:privacy-location" {
+			return true
+		}
+	}
+	return false
 }
 
 func isConnectedValue(value string) bool {
