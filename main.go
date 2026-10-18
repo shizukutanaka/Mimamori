@@ -190,7 +190,7 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 	for _, err := range descriptionErrors {
 		fmt.Fprintf(stderr, "warning: cannot read a device description: %v\n", err)
 	}
-	incomplete := arp.err != nil || gateway.err != nil || discovery.err != nil || len(descriptionErrors) > 0
+	incomplete := arp.err != nil || gateway.err != nil || discovery.err != nil || wifiCheck.err != nil || len(descriptionErrors) > 0
 	wifiFs := wifiFindings(wifiCheck.security, lang)
 	portMappings, portMappingErr := fetchPortMappings(ctx, httpClient, gatewayIP, discovery.responses, descriptions)
 	if portMappingErr != nil {
@@ -730,6 +730,9 @@ func wifiFindings(security wifi.Security, lang string) []report.Finding {
 func renderText(writer io.Writer, result output, lang string) {
 	fmt.Fprintln(writer, i18n.T(lang, "title"))
 	fmt.Fprintln(writer, i18n.T(lang, "score", i18n.T(lang, result.Status), result.Score))
+	if result.Incomplete {
+		fmt.Fprintln(writer, i18n.T(lang, "incomplete_notice"))
+	}
 	newCount := 0
 	for _, device := range result.Devices {
 		if device.New {

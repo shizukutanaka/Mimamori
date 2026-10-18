@@ -594,6 +594,41 @@ func TestWriteOutputIncludesIncompleteJSON(t *testing.T) {
 	}
 }
 
+func TestRenderTextShowsLocalizedIncompleteNotice(t *testing.T) {
+	scoreLine := i18n.T("ja", "score", i18n.T("ja", "safe"), 100)
+	notice := i18n.T("ja", "incomplete_notice")
+	for _, test := range []struct {
+		name       string
+		incomplete bool
+	}{
+		{name: "incomplete", incomplete: true},
+		{name: "complete", incomplete: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var buffer bytes.Buffer
+			renderText(&buffer, output{Score: 100, Status: "safe", Incomplete: test.incomplete}, "ja")
+			lines := strings.Split(strings.TrimSuffix(buffer.String(), "\n"), "\n")
+			if len(lines) < 3 {
+				t.Fatalf("renderText() output has too few lines: %q", buffer.String())
+			}
+			if lines[1] != scoreLine {
+				t.Fatalf("score line = %q, want %q", lines[1], scoreLine)
+			}
+			if test.incomplete {
+				if lines[2] != notice {
+					t.Fatalf("line after score = %q, want notice %q", lines[2], notice)
+				}
+				return
+			}
+			for _, line := range lines {
+				if line == notice {
+					t.Fatal("renderText() included incomplete notice for a complete result")
+				}
+			}
+		})
+	}
+}
+
 func TestFindingsCatalogHitForAllSupportedLanguages(t *testing.T) {
 	ip := netip.MustParseAddr("192.168.1.10")
 	for _, lang := range i18n.Supported() {

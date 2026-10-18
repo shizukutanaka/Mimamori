@@ -58,8 +58,11 @@ func TestCatalogKeysAndFormatVerbs(t *testing.T) {
 	}
 }
 
-func TestWiFiCatalogKeys(t *testing.T) {
-	keys := []string{"wifi_open", "wifi_open_fix", "wifi_wep", "wifi_wep_fix", "wifi_weak", "wifi_weak_fix"}
+func TestSupplementalCatalogKeys(t *testing.T) {
+	keys := []string{
+		"wifi_open", "wifi_open_fix", "wifi_wep", "wifi_wep_fix", "wifi_weak", "wifi_weak_fix",
+		"incomplete_notice",
+	}
 	for _, lang := range Supported() {
 		for _, key := range keys {
 			if _, ok := messages[lang][key]; !ok {
