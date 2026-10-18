@@ -63,19 +63,51 @@ var messages = map[string]map[string]string{
 }
 
 func Detect(getenv func(string) string) string {
-	for _, key := range []string{"LC_ALL", "LC_MESSAGES", "LANG"} {
-		if value := getenv(key); value != "" {
-			return language(value)
+	for _, value := range strings.Split(getenv("LANGUAGE"), ":") {
+		if lang, ok := Match(value); ok {
+			return lang
 		}
 	}
-	return language(systemLocale())
-}
-
-func language(locale string) string {
-	if strings.HasPrefix(strings.ToLower(locale), "ja") {
-		return "ja"
+	for _, key := range []string{"LC_ALL", "LC_MESSAGES", "LANG"} {
+		if value := getenv(key); value != "" {
+			if lang, ok := Match(value); ok {
+				return lang
+			}
+			return "en"
+		}
+	}
+	if lang, ok := Match(systemLocale()); ok {
+		return lang
 	}
 	return "en"
+}
+
+func Match(tag string) (string, bool) {
+	tag = strings.TrimSpace(strings.ToLower(tag))
+	if index := strings.IndexAny(tag, ".@"); index >= 0 {
+		tag = tag[:index]
+	}
+	tag = strings.ReplaceAll(tag, "-", "_")
+	if tag == "" || tag == "c" || tag == "posix" {
+		return "", false
+	}
+	parts := strings.Split(tag, "_")
+	primary := parts[0]
+	if primary == "zh" {
+		for _, part := range parts[1:] {
+			switch part {
+			case "hant", "tw", "hk", "mo":
+				return "zh-Hant", true
+			}
+		}
+		return "zh-Hans", true
+	}
+	for _, lang := range Supported() {
+		if strings.SplitN(strings.ToLower(lang), "-", 2)[0] == primary {
+			return lang, true
+		}
+	}
+	return "", false
 }
 
 func T(lang, key string, args ...any) string {
@@ -93,5 +125,5 @@ func T(lang, key string, args ...any) string {
 }
 
 func Supported() []string {
-	return []string{"en", "ja"}
+	return []string{"en", "ja", "zh-Hans", "zh-Hant", "es", "pt", "fr", "de", "ru", "ko", "id"}
 }

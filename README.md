@@ -13,13 +13,15 @@ Download the binary for your operating system and run it from a terminal:
 ```sh
 ./mimamori
 ./mimamori --lang en
+./mimamori --lang pt-BR
+./mimamori --lang zh_TW
 ./mimamori --json
 ./mimamori --state ./devices.json --wait 5s
 ```
 
 On Windows, run `mimamori.exe` (for example, `.\mimamori.exe --lang ja`) or double-click it in Explorer. When launched by double-click, the window stays open until you press Enter so you can read the results. The first run learns the devices on your network; new-device notices begin on the next run. By default, history is stored under your OS user configuration directory in `Mimamori/devices.json`.
 
-Language is detected from the system locale by default. Use `--lang en` or `--lang ja` to choose explicitly, and `--json` for indented JSON output.
+Supported languages: English (`en`), Japanese (`ja`), Simplified Chinese (`zh-Hans`), Traditional Chinese (`zh-Hant`), Spanish (`es`), Portuguese (`pt`), French (`fr`), German (`de`), Russian (`ru`), Korean (`ko`), and Indonesian (`id`). By default, Mimamori checks `LANGUAGE`, `LC_ALL`, `LC_MESSAGES`, then `LANG`; on Windows, it falls back to the display language when these are empty. Use `--lang` with a language code or regional tag, such as `--lang pt-BR` or `--lang zh_TW`, to choose explicitly. Use `--json` for indented JSON output.
 
 Example:
 
@@ -47,7 +49,7 @@ go build -o mimamori .
 ./scripts/dist.sh
 ```
 
-To add a language, add one catalog map in `internal/i18n/i18n.go`.
+To add a language, add a catalog file in `internal/i18n` and list its code in `Supported()`.
 
 ---
 
@@ -66,13 +68,15 @@ Mimamori は「今、家のネットワークは安全だろうか？」とい�
 ```sh
 ./mimamori
 ./mimamori --lang ja
+./mimamori --lang pt-BR
+./mimamori --lang zh_TW
 ./mimamori --json
 ./mimamori --state ./devices.json --wait 5s
 ```
 
 Windows では `mimamori.exe` を実行してください（例: `.\mimamori.exe --lang ja`）。エクスプローラーからダブルクリックしても起動でき、その場合は結果を読めるよう Enter キーを押すまでウィンドウが開いたままになります。初回は家の機器を記録し、新しい機器のお知らせは次回から表示します。履歴は通常、OS のユーザー設定フォルダーにある `Mimamori/devices.json` に保存されます。
 
-言語はシステムの設定から自動で選ばれます。`--lang en` または `--lang ja` で指定でき、`--json` で整形済み JSON を出力できます。
+対応言語: 英語（`en`）、日本語（`ja`）、簡体字中国語（`zh-Hans`）、繁体字中国語（`zh-Hant`）、スペイン語（`es`）、ポルトガル語（`pt`）、フランス語（`fr`）、ドイツ語（`de`）、ロシア語（`ru`）、韓国語（`ko`）、インドネシア語（`id`）。言語は `LANGUAGE`、`LC_ALL`、`LC_MESSAGES`、`LANG` の順で自動判定し、Windows ではこれらが空の場合に表示言語を使います。`--lang pt-BR` や `--lang zh_TW` のように、言語コードや地域タグで指定できます。`--json` で整形済み JSON を出力できます。
 
 終了コード: `0` は危険な問題なし（注意事項が表示される場合があります）、`2` は危険な問題あり、`1` はオプションまたは動作上のエラーです。
 
@@ -93,4 +97,4 @@ go build -o mimamori .
 ./scripts/dist.sh
 ```
 
-言語を追加する場合は `internal/i18n/i18n.go` のメッセージ一覧に 1 つの map を追加してください。
+言語を追加する場合は `internal/i18n` にカタログファイルを追加し、`Supported()` にコードを登録してください。
