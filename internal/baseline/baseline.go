@@ -75,8 +75,13 @@ func (s *Store) Observe(mac, ip, name string, now time.Time) (isNew bool) {
 
 func Save(path string, store Store) error {
 	directory := filepath.Dir(path)
+	_, statErr := os.Stat(directory)
+	directoryMissing := errors.Is(statErr, os.ErrNotExist)
 	if err := os.MkdirAll(directory, 0700); err != nil {
 		return err
+	}
+	if directoryMissing {
+		syncDir(filepath.Dir(directory))
 	}
 	data, err := json.MarshalIndent(store, "", "  ")
 	if err != nil {
@@ -103,7 +108,11 @@ func Save(path string, store Store) error {
 	if err := file.Close(); err != nil {
 		return err
 	}
-	return renameReplace(tempPath, path)
+	if err := renameReplace(tempPath, path); err != nil {
+		return err
+	}
+	syncDir(directory)
+	return nil
 }
 
 func Quarantine(path string) (string, error) {

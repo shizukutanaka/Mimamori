@@ -20,9 +20,6 @@ func retryRename(rename func() error, isEphemeral func(error) bool, sleep func(t
 		}
 		sleep(wait)
 		elapsed += wait
-		if elapsed >= limit {
-			return err
-		}
 
 		delay *= 2
 		if delay > 100*time.Millisecond {
