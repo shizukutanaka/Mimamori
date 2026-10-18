@@ -108,8 +108,10 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 	wait := flags.Duration("wait", 3*time.Second, "time to listen for local UPnP devices")
 	showVersion := flags.Bool("version", false, "print version")
 	lang := ""
+	incomplete := false
+	localizedNoticeShown := false
 	finish := func(code int) runResult {
-		return runResult{code: code, lang: lang, pause: !*jsonOutput}
+		return finishRun(stderr, code, lang, *jsonOutput, incomplete, localizedNoticeShown)
 	}
 	if err := flags.Parse(args); err != nil {
 		if err == flag.ErrHelp {
@@ -193,7 +195,7 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 	for _, err := range descriptionErrors {
 		fmt.Fprintf(stderr, "warning: cannot read a device description: %v\n", err)
 	}
-	incomplete := arp.err != nil || gateway.err != nil || discovery.err != nil || wifiCheck.err != nil || len(descriptionErrors) > 0
+	incomplete = arp.err != nil || gateway.err != nil || discovery.err != nil || wifiCheck.err != nil || len(descriptionErrors) > 0
 	wifiFs := wifiFindings(wifiCheck.security, lang)
 	portMappings, portMappingErr := fetchPortMappings(ctx, httpClient, gatewayIP, discovery.responses, descriptions)
 	if portMappingErr != nil {
@@ -226,7 +228,7 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 		incomplete = true
 	}
 	if !canReport {
-		reportNoDevices(stderr, incomplete, *jsonOutput)
+		fmt.Fprintln(stderr, "error: the scan could not see any device on your network; the result would not be reliable")
 		return finish(1)
 	}
 
@@ -287,7 +289,7 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 		WiFiLocationRequired: errors.Is(wifiCheck.err, wifi.ErrLocationPermission),
 		Gateway:              gatewayString(gatewayIP), Devices: devices, Findings: findings,
 	}
-	if err := writeOutputWithIncompleteWarning(stdout, stderr, result, *jsonOutput, lang); err != nil {
+	if err := writeOutput(stdout, result, *jsonOutput, lang); err != nil {
 		if *jsonOutput {
 			fmt.Fprintf(stderr, "warning: cannot write JSON output: %v\n", err)
 		} else {
@@ -295,6 +297,7 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 		}
 		return finish(1)
 	}
+	localizedNoticeShown = !*jsonOutput
 	if shouldSaveHistory(true, firstRun, store, loadState) {
 		if err := baseline.Save(*statePath, store); err != nil {
 			fmt.Fprintf(stderr, "warning: cannot save device history: %v\n", err)
@@ -358,21 +361,11 @@ func writeOutput(writer io.Writer, result output, jsonMode bool, lang string) er
 	return nil
 }
 
-func writeOutputWithIncompleteWarning(stdout, stderr io.Writer, result output, jsonMode bool, lang string) error {
-	err := writeOutput(stdout, result, jsonMode, lang)
-	warnIncomplete(stderr, result.Incomplete, jsonMode, err == nil && !jsonMode)
-	return err
-}
-
-func reportNoDevices(stderr io.Writer, incomplete, jsonMode bool) {
-	warnIncomplete(stderr, incomplete, jsonMode, false)
-	fmt.Fprintln(stderr, "error: the scan could not see any device on your network; the result would not be reliable")
-}
-
-func warnIncomplete(stderr io.Writer, incomplete, jsonMode, localizedNoticeShown bool) {
+func finishRun(stderr io.Writer, code int, lang string, jsonMode, incomplete, localizedNoticeShown bool) runResult {
 	if incomplete && (jsonMode || !localizedNoticeShown) {
 		fmt.Fprintln(stderr, "warning: some checks could not run; this result may be incomplete")
 	}
+	return runResult{code: code, lang: lang, pause: !jsonMode}
 }
 
 func resolveLanguage(flagValue string, getenv func(string) string) (string, error) {
