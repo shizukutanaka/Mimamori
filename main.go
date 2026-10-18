@@ -197,12 +197,21 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 		fmt.Fprintf(stderr, "warning: cannot read the router's port forwarding list: %v\n", portMappingErr)
 		incomplete = true
 	}
+
+	hosts := collectHosts(arp.neighbors, gatewayIP, discovery.responses)
+	if gatewayIP.IsValid() {
+		prefixes, err := lan.LocalPrefixes()
+		if err != nil {
+			fmt.Fprintf(stderr, "warning: cannot list network interfaces: %v\n", err)
+			incomplete = true
+		}
+		hosts = mergeHosts(hosts, lan.SweepHosts(prefixes, gatewayIP))
+	}
 	if incomplete && !*jsonOutput {
 		fmt.Fprintln(stderr, "warning: some checks could not run; this result may be incomplete")
 	}
 
-	hosts := collectHosts(arp.neighbors, gatewayIP, discovery.responses)
-	opened := probe.Scan(ctx, hosts, []int{23, 2323, 21, 5900}, 700*time.Millisecond, 64)
+	opened := probe.Scan(ctx, hosts, []int{23, 2323, 21, 5900}, 700*time.Millisecond, 128)
 	canReport, forceIncomplete := reportable(scanObservedNetwork(arp.neighbors, discovery.responses, opened), wifiFs)
 	if forceIncomplete {
 		if !incomplete && !*jsonOutput {
@@ -355,7 +364,7 @@ func gatewayString(ip netip.Addr) string {
 func collectHosts(neighbors []lan.Neighbor, gateway netip.Addr, responses []ssdp.Response) []netip.Addr {
 	hosts := make(map[netip.Addr]struct{})
 	add := func(ip netip.Addr) {
-		if ip.Is4() && ip.IsPrivate() && len(hosts) < 1024 {
+		if ip.Is4() && ip.IsPrivate() && len(hosts) < maxScanHosts {
 			hosts[ip] = struct{}{}
 		}
 	}
@@ -372,6 +381,35 @@ func collectHosts(neighbors []lan.Neighbor, gateway netip.Addr, responses []ssdp
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].Less(result[j]) })
 	return result
+}
+
+const maxScanHosts = 1024
+
+func mergeHosts(hosts, swept []netip.Addr) []netip.Addr {
+	seen := make(map[netip.Addr]struct{}, len(hosts)+len(swept))
+	merged := make([]netip.Addr, 0, maxScanHosts)
+	for _, list := range [][]netip.Addr{hosts, swept} {
+		for _, host := range list {
+			if !host.Is4() || !host.IsPrivate() {
+				continue
+			}
+			if _, exists := seen[host]; exists {
+				continue
+			}
+			if len(merged) == maxScanHosts {
+				break
+			}
+			seen[host] = struct{}{}
+			merged = append(merged, host)
+		}
+		if len(merged) == maxScanHosts {
+			break
+		}
+	}
+	sort.Slice(merged, func(i, j int) bool {
+		return merged[i].Less(merged[j])
+	})
+	return merged
 }
 
 func newUPnPHTTPClient() *http.Client {

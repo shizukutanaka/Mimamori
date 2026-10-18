@@ -424,6 +424,44 @@ func TestCollectHostsFiltersAndCaps(t *testing.T) {
 	}
 }
 
+func TestMergeHostsDeduplicatesSortsAndCaps(t *testing.T) {
+	existing := []netip.Addr{
+		netip.MustParseAddr("192.168.1.10"),
+		netip.MustParseAddr("192.168.1.1"),
+	}
+	swept := []netip.Addr{
+		netip.MustParseAddr("192.168.1.10"),
+		netip.MustParseAddr("192.168.1.2"),
+	}
+	got := mergeHosts(existing, swept)
+	want := []netip.Addr{
+		netip.MustParseAddr("192.168.1.1"),
+		netip.MustParseAddr("192.168.1.2"),
+		netip.MustParseAddr("192.168.1.10"),
+	}
+	if len(got) != len(want) {
+		t.Fatalf("mergeHosts() returned %d hosts, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("mergeHosts()[%d] = %s, want %s", i, got[i], want[i])
+		}
+	}
+
+	full := make([]netip.Addr, maxScanHosts)
+	for i := range full {
+		full[i] = netip.AddrFrom4([4]byte{10, 0, byte(i >> 8), byte(i)})
+	}
+	extra := netip.MustParseAddr("10.0.4.1")
+	capped := mergeHosts(full, []netip.Addr{extra})
+	if len(capped) != maxScanHosts {
+		t.Fatalf("mergeHosts() returned %d hosts, want cap of %d", len(capped), maxScanHosts)
+	}
+	if capped[len(capped)-1] == extra {
+		t.Fatal("mergeHosts() exceeded the cap with a swept host")
+	}
+}
+
 func TestGatewayString(t *testing.T) {
 	if got := gatewayString(netip.Addr{}); got != "" {
 		t.Fatalf("gatewayString(invalid) = %q", got)
