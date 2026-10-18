@@ -90,7 +90,9 @@ type descriptionResult struct {
 }
 
 func main() {
+	restoreQuickEdit := console.DisableQuickEdit()
 	result := run(os.Args[1:], os.Stdout, os.Stderr)
+	restoreQuickEdit()
 	if result.pause && console.ShouldPause() {
 		fmt.Fprint(os.Stdout, i18n.T(result.lang, "press_enter"))
 		_, _ = bufio.NewReader(os.Stdin).ReadString('\n')
