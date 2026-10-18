@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"net/http"
@@ -779,6 +780,141 @@ func TestResolveLanguage(t *testing.T) {
 			}
 			if got != test.want {
 				t.Fatalf("resolveLanguage(%q) = %q, want %q", test.value, got, test.want)
+			}
+		})
+	}
+}
+
+func TestPreLanguage(t *testing.T) {
+	getenv := func(key string) string {
+		if key == "LANG" {
+			return "fr_FR.UTF-8"
+		}
+		return ""
+	}
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"short separate", []string{"-lang", "ja"}, "ja"},
+		{"long separate", []string{"--lang", "ja"}, "ja"},
+		{"short equals", []string{"-lang=ja"}, "ja"},
+		{"long equals", []string{"--lang=ja"}, "ja"},
+		{"language after boolean flag", []string{"--json", "--lang=ja"}, "ja"},
+		{"language value can look like a flag", []string{"--state", "--", "--lang=ja"}, "ja"},
+		{"state consumes language-looking value", []string{"--state", "--lang=ja"}, "fr"},
+		{"help stops before language flag", []string{"--help", "--lang=ja"}, "fr"},
+		{"positional argument stops before language flag", []string{"scan-pos", "--lang=ja"}, "fr"},
+		{"lone dash stops before language flag", []string{"-", "--lang=ja"}, "fr"},
+		{"unknown flag stops before language flag", []string{"--unknown", "--lang=ja"}, "fr"},
+		{"unknown flag preserves earlier language", []string{"--lang=ja", "--unknown"}, "ja"},
+		{"auto uses detected language", []string{"--lang=auto"}, "fr"},
+		{"invalid uses detected language", []string{"--lang", "xx"}, "fr"},
+		{"flag after separator is ignored", []string{"--", "--lang=ja"}, "fr"},
+		{"missing value uses detected language", []string{"--lang"}, "fr"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			flags := flag.NewFlagSet("mimamori", flag.ContinueOnError)
+			flags.SetOutput(io.Discard)
+			registeredFlags := registerRunFlags(flags)
+			got := preLanguage(test.args, getenv, flags)
+
+			_ = flags.Parse(test.args)
+			parsed := i18n.Detect(getenv)
+			if resolved, err := resolveLanguage(*registeredFlags.language, getenv); err == nil {
+				parsed = resolved
+			}
+			if parsed != test.want {
+				t.Fatalf("FlagSet.Parse(%v) selected %q, want %q", test.args, parsed, test.want)
+			}
+			if got != parsed {
+				t.Fatalf("preLanguage(%v) = %q, want FlagSet language %q", test.args, got, parsed)
+			}
+		})
+	}
+}
+
+func TestRunLocalizedHelp(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		env  string
+		lang string
+	}{
+		{"detected Japanese", []string{"--help"}, "ja_JP.UTF-8", "ja"},
+		{"explicit Korean", []string{"--lang=ko", "--help"}, "en_US.UTF-8", "ko"},
+		{"help before language uses detected language", []string{"--help", "--lang=ja"}, "fr_FR.UTF-8", "fr"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			result := runWithEnv(test.args, &stdout, &stderr, func(key string) string {
+				if key == "LANG" {
+					return test.env
+				}
+				return ""
+			})
+			if result.code != 0 {
+				t.Fatalf("runWithEnv() code = %d, want 0; stderr = %q", result.code, stderr.String())
+			}
+			if result.lang != test.lang {
+				t.Fatalf("runWithEnv() language = %q, want %q", result.lang, test.lang)
+			}
+			for _, key := range []string{"usage_header", "flag_json", "flag_lang"} {
+				var text string
+				if key == "flag_lang" {
+					text = i18n.T(test.lang, key, strings.Join(i18n.Supported(), ", "))
+				} else {
+					text = i18n.T(test.lang, key)
+				}
+				if !strings.Contains(stderr.String(), text) {
+					t.Errorf("help output %q does not contain %q", stderr.String(), text)
+				}
+			}
+		})
+	}
+}
+
+func TestRunLocalizedStartupErrors(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		env     string
+		lang    string
+		wantKey string
+		wantArg string
+	}{
+		{"invalid language", []string{"--lang", "xx"}, "ja_JP.UTF-8", "ja", "invalid_lang", "xx"},
+		{"unexpected argument", []string{"extra"}, "fr_FR.UTF-8", "fr", "unexpected_argument", "extra"},
+		{"negative wait", []string{"--wait=-1s"}, "de_DE.UTF-8", "de", "wait_negative", ""},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			result := runWithEnv(test.args, &stdout, &stderr, func(key string) string {
+				if key == "LANG" {
+					return test.env
+				}
+				return ""
+			})
+			if result.code != 1 {
+				t.Fatalf("runWithEnv() code = %d, want 1; stderr = %q", result.code, stderr.String())
+			}
+			if result.lang != test.lang {
+				t.Fatalf("runWithEnv() language = %q, want %q", result.lang, test.lang)
+			}
+			var want string
+			if test.wantKey == "invalid_lang" {
+				want = i18n.T(test.lang, test.wantKey, test.wantArg, strings.Join(i18n.Supported(), ", "))
+			} else if test.wantArg != "" {
+				want = i18n.T(test.lang, test.wantKey, test.wantArg)
+			} else {
+				want = i18n.T(test.lang, test.wantKey)
+			}
+			if got := stderr.String(); got != want+"\n" {
+				t.Fatalf("runWithEnv() stderr = %q, want %q", got, want+"\n")
 			}
 		})
 	}

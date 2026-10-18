@@ -71,6 +71,10 @@ type runResult struct {
 	pause bool
 }
 
+func earlyRunResult(code int, lang string, jsonMode bool) runResult {
+	return runResult{code: code, lang: lang, pause: !jsonMode}
+}
+
 type discoveryResult struct {
 	neighbors []lan.Neighbor
 	err       error
@@ -107,14 +111,29 @@ func main() {
 }
 
 func run(args []string, stdout, stderr io.Writer) runResult {
+	return runWithEnv(args, stdout, stderr, os.Getenv)
+}
+
+func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) string) runResult {
 	flags := flag.NewFlagSet("mimamori", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	jsonOutput := flags.Bool("json", false, "write JSON output")
-	languageHelp := fmt.Sprintf("output language: auto or one of %s", strings.Join(i18n.Supported(), ", "))
-	language := flags.String("lang", "auto", languageHelp)
-	statePath := flags.String("state", "", "path to the local device history file")
-	wait := flags.Duration("wait", 3*time.Second, "time to listen for local UPnP devices")
-	showVersion := flags.Bool("version", false, "print version")
+	registeredFlags := registerRunFlags(flags)
+	jsonOutput := registeredFlags.jsonOutput
+	language := registeredFlags.language
+	statePath := registeredFlags.statePath
+	wait := registeredFlags.wait
+	showVersion := registeredFlags.showVersion
+	pre := preLanguage(args, getenv, flags)
+	flags.Lookup("json").Usage = i18n.T(pre, "flag_json")
+	languageHelp := i18n.T(pre, "flag_lang", strings.Join(i18n.Supported(), ", "))
+	flags.Lookup("lang").Usage = languageHelp
+	flags.Lookup("state").Usage = i18n.T(pre, "flag_state")
+	flags.Lookup("wait").Usage = i18n.T(pre, "flag_wait")
+	flags.Lookup("version").Usage = i18n.T(pre, "flag_version")
+	flags.Usage = func() {
+		fmt.Fprintln(stderr, i18n.T(pre, "usage_header"))
+		flags.PrintDefaults()
+	}
 	lang := ""
 	incomplete := false
 	localizedNoticeShown := false
@@ -123,27 +142,27 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 	}
 	if err := flags.Parse(args); err != nil {
 		if err == flag.ErrHelp {
-			return finish(0)
+			return earlyRunResult(0, pre, *jsonOutput)
 		}
-		return finish(1)
+		return earlyRunResult(1, pre, *jsonOutput)
 	}
 	if flags.NArg() != 0 {
-		fmt.Fprintf(stderr, "unexpected argument: %s\n", flags.Arg(0))
-		return finish(1)
+		fmt.Fprintln(stderr, i18n.T(pre, "unexpected_argument", flags.Arg(0)))
+		return earlyRunResult(1, pre, *jsonOutput)
 	}
 	if *showVersion {
 		fmt.Fprintf(stdout, "Mimamori %s\n", version)
-		return finish(0)
+		return earlyRunResult(0, pre, *jsonOutput)
 	}
-	resolvedLang, err := resolveLanguage(*language, os.Getenv)
+	resolvedLang, err := resolveLanguage(*language, getenv)
 	if err != nil {
-		fmt.Fprintln(stderr, err)
-		return finish(1)
+		fmt.Fprintln(stderr, i18n.T(pre, "invalid_lang", *language, strings.Join(i18n.Supported(), ", ")))
+		return earlyRunResult(1, pre, *jsonOutput)
 	}
 	lang = resolvedLang
 	if *wait < 0 {
-		fmt.Fprintln(stderr, "--wait cannot be negative")
-		return finish(1)
+		fmt.Fprintln(stderr, i18n.T(pre, "wait_negative"))
+		return earlyRunResult(1, pre, *jsonOutput)
 	}
 	if *statePath == "" {
 		var err error
