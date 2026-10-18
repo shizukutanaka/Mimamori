@@ -34,9 +34,10 @@ func TestMakeFindings(t *testing.T) {
 					{IP: ip, USN: "uuid:router::InternetGatewayDevice"},
 				},
 				ip,
-				map[netip.Addr]ssdp.Device{},
+				map[netip.Addr]ssdp.Description{},
 				map[netip.Addr]string{ip: "Router", newIP: "Camera"},
 				map[netip.Addr]bool{newIP: true},
+				nil,
 				lang,
 			)
 			if len(findings) != 5 {
@@ -62,6 +63,96 @@ func TestMakeFindings(t *testing.T) {
 	}
 }
 
+func TestPortForwardFindings(t *testing.T) {
+	internalIP := netip.MustParseAddr("192.168.1.30")
+	publicIP := netip.MustParseAddr("8.8.8.8")
+	tests := []struct {
+		name      string
+		mappings  []ssdp.PortMapping
+		names     map[netip.Addr]string
+		wantID    string
+		wantLevel report.Level
+		wantCount int
+		wantPort  int
+		wantName  string
+	}{
+		{
+			name: "risky remote access",
+			mappings: []ssdp.PortMapping{{
+				ExternalPort: 44338, InternalPort: 3389, InternalClient: internalIP.String(), Enabled: true,
+			}},
+			names:  map[netip.Addr]string{internalIP: "Office PC"},
+			wantID: "port_forward_risky", wantLevel: report.Danger, wantCount: 1, wantPort: 44338, wantName: "Office PC",
+		},
+		{
+			name: "ordinary forward",
+			mappings: []ssdp.PortMapping{{
+				ExternalPort: 3074, InternalPort: 3074, InternalClient: internalIP.String(), Enabled: true,
+			}},
+			names:  map[netip.Addr]string{internalIP: "Game console"},
+			wantID: "port_forward", wantLevel: report.Caution, wantCount: 1, wantPort: 3074, wantName: "Game console",
+		},
+		{
+			name: "TCP and UDP deduplicated",
+			mappings: []ssdp.PortMapping{
+				{ExternalPort: 3074, Protocol: "TCP", InternalPort: 3074, InternalClient: internalIP.String(), Enabled: true},
+				{ExternalPort: 3074, Protocol: "UDP", InternalPort: 3074, InternalClient: internalIP.String(), Enabled: true},
+			},
+			names:  map[netip.Addr]string{internalIP: "Game console"},
+			wantID: "port_forward", wantLevel: report.Caution, wantCount: 1, wantPort: 3074, wantName: "Game console",
+		},
+		{
+			name: "disabled mapping ignored",
+			mappings: []ssdp.PortMapping{{
+				ExternalPort: 3389, InternalPort: 3389, InternalClient: internalIP.String(),
+			}},
+		},
+		{
+			name: "public internal client ignored",
+			mappings: []ssdp.PortMapping{{
+				ExternalPort: 3389, InternalPort: 3389, InternalClient: publicIP.String(), Enabled: true,
+			}},
+		},
+		{
+			name: "description used when device name is unknown",
+			mappings: []ssdp.PortMapping{{
+				ExternalPort: 3074, InternalPort: 3074, InternalClient: internalIP.String(), Enabled: true, Description: "  Game\x1b Console\u200f ",
+			}},
+			wantID: "port_forward", wantLevel: report.Caution, wantCount: 1, wantPort: 3074, wantName: "Game Console",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			findings := makeFindings(
+				nil, nil, netip.Addr{}, map[netip.Addr]ssdp.Description{},
+				test.names, map[netip.Addr]bool{}, test.mappings, "en",
+			)
+			portFindings := make([]report.Finding, 0)
+			for _, finding := range findings {
+				if finding.ID == "port_forward" || finding.ID == "port_forward_risky" {
+					portFindings = append(portFindings, finding)
+				}
+			}
+			if len(portFindings) != test.wantCount {
+				t.Fatalf("port forwarding findings = %#v, want %d", portFindings, test.wantCount)
+			}
+			if test.wantCount == 1 {
+				finding := portFindings[0]
+				if finding.ID != test.wantID || finding.Level != test.wantLevel || finding.Port != test.wantPort || finding.Device != test.wantName {
+					t.Fatalf("port forwarding finding = %#v", finding)
+				}
+				wantPoints := 3
+				if test.wantLevel == report.Danger {
+					wantPoints = 20
+				}
+				if finding.Points != wantPoints || finding.IP != internalIP.String() {
+					t.Fatalf("port forwarding finding = %#v", finding)
+				}
+			}
+		})
+	}
+}
+
 func TestRouterUPnPAttribution(t *testing.T) {
 	gateway := netip.MustParseAddr("192.168.1.1")
 	secondary := netip.MustParseAddr("192.168.1.2")
@@ -70,7 +161,7 @@ func TestRouterUPnPAttribution(t *testing.T) {
 		name         string
 		gateway      netip.Addr
 		responses    []ssdp.Response
-		descriptions map[netip.Addr]ssdp.Device
+		descriptions map[netip.Addr]ssdp.Description
 		want         int
 	}{
 		{name: "secondary IGD ignored", gateway: gateway, responses: []ssdp.Response{igd}},
@@ -78,14 +169,14 @@ func TestRouterUPnPAttribution(t *testing.T) {
 		{
 			name:         "known gateway description",
 			gateway:      gateway,
-			descriptions: map[netip.Addr]ssdp.Device{gateway: {DeviceType: "urn:schemas-upnp-org:device:InternetGatewayDevice:1"}},
+			descriptions: map[netip.Addr]ssdp.Description{gateway: {Device: ssdp.Device{DeviceType: "urn:schemas-upnp-org:device:InternetGatewayDevice:1"}}},
 			want:         1,
 		},
 		{name: "unknown gateway preserves first IGD", responses: []ssdp.Response{igd}, want: 1},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			findings := makeFindings(nil, test.responses, test.gateway, test.descriptions, map[netip.Addr]string{}, map[netip.Addr]bool{}, "en")
+			findings := makeFindings(nil, test.responses, test.gateway, test.descriptions, map[netip.Addr]string{}, map[netip.Addr]bool{}, nil, "en")
 			count := 0
 			for _, finding := range findings {
 				if finding.ID == "router_upnp" {
@@ -118,8 +209,8 @@ func TestSanitizeName(t *testing.T) {
 	}
 
 	ip := netip.MustParseAddr("192.168.1.20")
-	name := deviceName("en", ip, lan.Neighbor{}, netip.Addr{}, map[netip.Addr]ssdp.Device{
-		ip: {Manufacturer: "Brand\x1b", ModelName: "Model\u200f"},
+	name := deviceName("en", ip, lan.Neighbor{}, netip.Addr{}, map[netip.Addr]ssdp.Description{
+		ip: {Device: ssdp.Device{Manufacturer: "Brand\x1b", ModelName: "Model\u200f"}},
 	})
 	if name != "Brand Model" {
 		t.Fatalf("deviceName() = %q, want sanitized manufacturer and model", name)
@@ -290,9 +381,12 @@ func TestFindingsCatalogHitForAllSupportedLanguages(t *testing.T) {
 			[]probe.Open{{IP: ip, Port: 23}, {IP: ip, Port: 21}, {IP: ip, Port: 5900}},
 			nil,
 			netip.Addr{},
-			map[netip.Addr]ssdp.Device{},
+			map[netip.Addr]ssdp.Description{},
 			map[netip.Addr]string{ip: "Router"},
 			map[netip.Addr]bool{},
+			[]ssdp.PortMapping{{
+				ExternalPort: 44338, InternalPort: 3389, InternalClient: ip.String(), Enabled: true,
+			}},
 			lang,
 		)
 		for _, finding := range findings {

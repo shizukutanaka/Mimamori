@@ -117,21 +117,47 @@ func Discover(ctx context.Context, wait time.Duration) ([]Response, error) {
 	return responses, nil
 }
 
-type Device struct {
-	FriendlyName string `xml:"friendlyName"`
-	Manufacturer string `xml:"manufacturer"`
-	ModelName    string `xml:"modelName"`
-	DeviceType   string `xml:"deviceType"`
+type Service struct {
+	ServiceType string `xml:"serviceType"`
+	ControlURL  string `xml:"controlURL"`
 }
 
-func ParseDescription(r io.Reader) (Device, error) {
-	var description struct {
-		Device Device `xml:"device"`
+type Device struct {
+	FriendlyName string    `xml:"friendlyName"`
+	Manufacturer string    `xml:"manufacturer"`
+	ModelName    string    `xml:"modelName"`
+	DeviceType   string    `xml:"deviceType"`
+	Services     []Service `xml:"serviceList>service"`
+	Devices      []Device  `xml:"deviceList>device"`
+}
+
+type Description struct {
+	Device   Device `xml:"device"`
+	URLBase  string `xml:"URLBase"`
+	Location string `xml:"-"`
+}
+
+func (d Device) WANConnection() (Service, bool) {
+	for _, service := range d.Services {
+		if strings.Contains(service.ServiceType, ":service:WANIPConnection:") ||
+			strings.Contains(service.ServiceType, ":service:WANPPPConnection:") {
+			return service, true
+		}
 	}
+	for _, device := range d.Devices {
+		if service, ok := device.WANConnection(); ok {
+			return service, true
+		}
+	}
+	return Service{}, false
+}
+
+func ParseDescription(r io.Reader) (Description, error) {
+	var description Description
 	if err := xml.NewDecoder(r).Decode(&description); err != nil {
-		return Device{}, err
+		return Description{}, err
 	}
-	return description.Device, nil
+	return description, nil
 }
 
 func AllowedLocation(location string, from netip.Addr) bool {
@@ -146,23 +172,51 @@ func AllowedLocation(location string, from netip.Addr) bool {
 	return err == nil && host.Is4() && host.IsPrivate() && host == from
 }
 
-func FetchDescription(ctx context.Context, client *http.Client, location string) (Device, error) {
+func ControlURL(location, urlBase, controlURL string, from netip.Addr) (string, bool) {
+	if strings.TrimSpace(controlURL) == "" {
+		return "", false
+	}
+	base := location
+	if urlBase != "" {
+		base = urlBase
+	}
+	baseURL, err := url.Parse(base)
+	if err != nil {
+		return "", false
+	}
+	reference, err := url.Parse(controlURL)
+	if err != nil {
+		return "", false
+	}
+	resolved := baseURL.ResolveReference(reference).String()
+	if !AllowedLocation(resolved, from) {
+		return "", false
+	}
+	return resolved, true
+}
+
+func FetchDescription(ctx context.Context, client *http.Client, location string) (Description, error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, location, nil)
 	if err != nil {
-		return Device{}, err
+		return Description{}, err
 	}
 	if client == nil {
 		client = http.DefaultClient
 	}
 	response, err := client.Do(request)
 	if err != nil {
-		return Device{}, err
+		return Description{}, err
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return Device{}, fmt.Errorf("description request returned HTTP %d", response.StatusCode)
+		return Description{}, fmt.Errorf("description request returned HTTP %d", response.StatusCode)
 	}
-	return ParseDescription(io.LimitReader(response.Body, 64*1024))
+	description, err := ParseDescription(io.LimitReader(response.Body, 64*1024))
+	if err != nil {
+		return Description{}, err
+	}
+	description.Location = location
+	return description, nil
 }
 
 func IsGateway(r Response) bool {

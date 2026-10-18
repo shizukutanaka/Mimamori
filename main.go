@@ -78,7 +78,7 @@ type ssdpResult struct {
 
 type descriptionResult struct {
 	ip     netip.Addr
-	device ssdp.Device
+	device ssdp.Description
 	err    error
 }
 
@@ -170,11 +170,17 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 		fmt.Fprintf(stderr, "warning: UPnP discovery failed: %v\n", discovery.err)
 	}
 
-	descriptions, descriptionErrors := fetchDescriptions(ctx, discovery.responses)
+	httpClient := newUPnPHTTPClient()
+	descriptions, descriptionErrors := fetchDescriptions(ctx, httpClient, discovery.responses)
 	for _, err := range descriptionErrors {
 		fmt.Fprintf(stderr, "warning: cannot read a device description: %v\n", err)
 	}
 	incomplete := arp.err != nil || gateway.err != nil || discovery.err != nil || len(descriptionErrors) > 0
+	portMappings, portMappingErr := fetchPortMappings(ctx, httpClient, gatewayIP, discovery.responses, descriptions)
+	if portMappingErr != nil {
+		fmt.Fprintf(stderr, "warning: cannot read the router's port forwarding list: %v\n", portMappingErr)
+		incomplete = true
+	}
 	if incomplete && !*jsonOutput {
 		fmt.Fprintln(stderr, "warning: some checks could not run; this result may be incomplete")
 	}
@@ -233,7 +239,7 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 		})
 	}
 
-	findings := makeFindings(opened, discovery.responses, gatewayIP, descriptions, deviceNames, newDevices, lang)
+	findings := makeFindings(opened, discovery.responses, gatewayIP, descriptions, deviceNames, newDevices, portMappings, lang)
 	status := report.Status(report.Score(findings), findings)
 	result := output{
 		Version: version, Score: report.Score(findings), Status: status, FirstRun: firstRun, Incomplete: incomplete,
@@ -333,7 +339,51 @@ func collectHosts(neighbors []lan.Neighbor, gateway netip.Addr, responses []ssdp
 	return result
 }
 
-func fetchDescriptions(ctx context.Context, responses []ssdp.Response) (map[netip.Addr]ssdp.Device, []error) {
+func newUPnPHTTPClient() *http.Client {
+	return &http.Client{
+		Timeout: 2 * time.Second,
+		Transport: &http.Transport{
+			Proxy: nil,
+		},
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+}
+
+func fetchPortMappings(
+	ctx context.Context,
+	client *http.Client,
+	gateway netip.Addr,
+	responses []ssdp.Response,
+	descriptions map[netip.Addr]ssdp.Description,
+) ([]ssdp.PortMapping, error) {
+	routerIP := gateway
+	if !routerIP.IsValid() {
+		var ok bool
+		routerIP, ok = routerUPnPIP(gateway, responses, descriptions)
+		if !ok {
+			return nil, nil
+		}
+	}
+	description, ok := descriptions[routerIP]
+	if !ok {
+		return nil, nil
+	}
+	service, ok := description.Device.WANConnection()
+	if !ok {
+		return nil, nil
+	}
+	controlURL, ok := ssdp.ControlURL(description.Location, description.URLBase, service.ControlURL, routerIP)
+	if !ok {
+		return nil, nil
+	}
+	queryContext, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	return ssdp.PortMappings(queryContext, client, controlURL, service.ServiceType)
+}
+
+func fetchDescriptions(ctx context.Context, client *http.Client, responses []ssdp.Response) (map[netip.Addr]ssdp.Description, []error) {
 	selected := make(map[netip.Addr]ssdp.Response)
 	for _, response := range responses {
 		if !ssdp.AllowedLocation(response.Location, response.IP) {
@@ -345,15 +395,6 @@ func fetchDescriptions(ctx context.Context, responses []ssdp.Response) (map[neti
 		}
 	}
 
-	clients := &http.Client{
-		Timeout: 2 * time.Second,
-		Transport: &http.Transport{
-			Proxy: nil,
-		},
-		CheckRedirect: func(*http.Request, []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
-	}
 	type request struct {
 		ip       netip.Addr
 		location string
@@ -370,7 +411,7 @@ func fetchDescriptions(ctx context.Context, responses []ssdp.Response) (map[neti
 		go func() {
 			defer workers.Done()
 			for item := range requests {
-				device, err := ssdp.FetchDescription(ctx, clients, item.location)
+				device, err := ssdp.FetchDescription(ctx, client, item.location)
 				results <- descriptionResult{ip: item.ip, device: device, err: err}
 			}
 		}()
@@ -384,7 +425,7 @@ func fetchDescriptions(ctx context.Context, responses []ssdp.Response) (map[neti
 		close(results)
 	}()
 
-	devices := make(map[netip.Addr]ssdp.Device, len(selected))
+	devices := make(map[netip.Addr]ssdp.Description, len(selected))
 	var errs []error
 	for result := range results {
 		if result.err != nil {
@@ -396,12 +437,12 @@ func fetchDescriptions(ctx context.Context, responses []ssdp.Response) (map[neti
 	return devices, errs
 }
 
-func deviceName(lang string, ip netip.Addr, neighbor lan.Neighbor, gateway netip.Addr, descriptions map[netip.Addr]ssdp.Device) string {
-	if device, ok := descriptions[ip]; ok {
-		if name := sanitizeName(device.FriendlyName); name != "" {
+func deviceName(lang string, ip netip.Addr, neighbor lan.Neighbor, gateway netip.Addr, descriptions map[netip.Addr]ssdp.Description) string {
+	if description, ok := descriptions[ip]; ok {
+		if name := sanitizeName(description.Device.FriendlyName); name != "" {
 			return name
 		}
-		name := sanitizeName(sanitizeName(device.Manufacturer) + " " + sanitizeName(device.ModelName))
+		name := sanitizeName(sanitizeName(description.Device.Manufacturer) + " " + sanitizeName(description.Device.ModelName))
 		if name != "" {
 			return name
 		}
@@ -435,9 +476,10 @@ func makeFindings(
 	opened []probe.Open,
 	responses []ssdp.Response,
 	gateway netip.Addr,
-	descriptions map[netip.Addr]ssdp.Device,
+	descriptions map[netip.Addr]ssdp.Description,
 	deviceNames map[netip.Addr]string,
 	newDevices map[netip.Addr]bool,
+	portMappings []ssdp.PortMapping,
 	lang string,
 ) []report.Finding {
 	findings := make([]report.Finding, 0)
@@ -463,37 +505,49 @@ func makeFindings(
 		}
 	}
 
-	isIGD := func(response ssdp.Response) bool {
-		if ssdp.IsGateway(response) {
-			return true
-		}
-		if device, ok := descriptions[response.IP]; ok && strings.Contains(strings.ToLower(device.DeviceType), "internetgatewaydevice") {
-			return true
-		}
-		return false
-	}
-	var upnpIP string
-	var upnpDevice string
-	if gateway.IsValid() {
-		if device, ok := descriptions[gateway]; ok && strings.Contains(strings.ToLower(device.DeviceType), "internetgatewaydevice") {
-			upnpIP = gateway.String()
-			upnpDevice = deviceNames[gateway]
-		}
-	}
-	for _, response := range responses {
-		if gateway.IsValid() && response.IP != gateway {
+	seenPortForwards := make(map[struct {
+		client netip.Addr
+		port   int
+	}]struct{})
+	for _, mapping := range portMappings {
+		if !mapping.Enabled {
 			continue
 		}
-		if upnpIP == "" && isIGD(response) {
-			upnpIP = response.IP.String()
-			upnpDevice = deviceNames[response.IP]
-			if !gateway.IsValid() {
-				break
-			}
+		internalIP, err := netip.ParseAddr(mapping.InternalClient)
+		if err != nil || !internalIP.Is4() || !internalIP.IsPrivate() {
+			continue
 		}
+		key := struct {
+			client netip.Addr
+			port   int
+		}{client: internalIP, port: mapping.ExternalPort}
+		if _, exists := seenPortForwards[key]; exists {
+			continue
+		}
+		seenPortForwards[key] = struct{}{}
+		device := deviceNames[internalIP]
+		if device == "" {
+			device = sanitizeName(mapping.Description)
+		}
+		if device == "" {
+			device = internalIP.String()
+		}
+		id, level, points := "port_forward", report.Caution, 3
+		switch mapping.InternalPort {
+		case 21, 22, 23, 2323, 445, 3389, 5900:
+			id, level, points = "port_forward_risky", report.Danger, 20
+		}
+		findings = append(findings, report.Finding{
+			ID: id, Level: level, Points: points, IP: internalIP.String(),
+			Device: device, Port: mapping.ExternalPort,
+		})
 	}
-	if upnpIP != "" {
-		findings = append(findings, report.Finding{ID: "router_upnp", Level: report.Caution, Points: 5, IP: upnpIP, Device: upnpDevice})
+
+	if upnpIP, ok := routerUPnPIP(gateway, responses, descriptions); ok {
+		findings = append(findings, report.Finding{
+			ID: "router_upnp", Level: report.Caution, Points: 5,
+			IP: upnpIP.String(), Device: deviceNames[upnpIP],
+		})
 	}
 
 	for i := range findings {
@@ -503,10 +557,41 @@ func makeFindings(
 		switch finding.ID {
 		case "telnet_open", "ftp_open", "vnc_open", "new_device":
 			finding.Message = i18n.T(lang, finding.ID, finding.Device)
+		case "port_forward", "port_forward_risky":
+			finding.Message = i18n.T(lang, finding.ID, finding.Device, finding.Port)
 		}
 	}
 	report.Sort(findings)
 	return findings
+}
+
+func routerUPnPIP(gateway netip.Addr, responses []ssdp.Response, descriptions map[netip.Addr]ssdp.Description) (netip.Addr, bool) {
+	isIGDDevice := func(device ssdp.Device) bool {
+		return strings.Contains(strings.ToLower(device.DeviceType), "internetgatewaydevice")
+	}
+	isIGDResponse := func(response ssdp.Response) bool {
+		if ssdp.IsGateway(response) {
+			return true
+		}
+		if description, ok := descriptions[response.IP]; ok && isIGDDevice(description.Device) {
+			return true
+		}
+		return false
+	}
+	if gateway.IsValid() {
+		if description, ok := descriptions[gateway]; ok && isIGDDevice(description.Device) {
+			return gateway, true
+		}
+	}
+	for _, response := range responses {
+		if gateway.IsValid() && response.IP != gateway {
+			continue
+		}
+		if isIGDResponse(response) {
+			return response.IP, true
+		}
+	}
+	return netip.Addr{}, false
 }
 
 func renderText(writer io.Writer, result output, lang string) {
