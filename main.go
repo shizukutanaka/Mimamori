@@ -576,9 +576,11 @@ func fetchPortMappings(
 		controlURL string
 	}
 	endpoints := make([]serviceEndpoint, 0)
+	var errs []error
 	for _, service := range description.Device.WANConnections() {
 		controlURL, ok := ssdp.ControlURL(description.Location, description.URLBase, service.ControlURL, routerIP)
 		if !ok {
+			errs = append(errs, fmt.Errorf("%s: control URL is not on the router", service.ServiceType))
 			continue
 		}
 		endpoints = append(endpoints, serviceEndpoint{service: service, controlURL: controlURL})
@@ -589,7 +591,6 @@ func fetchPortMappings(
 	queryContext, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	var mappings []ssdp.PortMapping
-	var errs []error
 	for _, endpoint := range endpoints {
 		serviceMappings, err := ssdp.PortMappings(queryContext, client, endpoint.controlURL, endpoint.service.ServiceType)
 		mappings = append(mappings, serviceMappings...)

@@ -59,6 +59,18 @@ func TestFetchPortMappingsAcrossWANServices(t *testing.T) {
 			wantHTTPRequests: 3,
 		},
 		{
+			name:          "rejected PPP URL makes query incomplete",
+			ipControlURL:  ipService.ControlURL,
+			pppControlURL: "http://192.168.1.2/ctl/PPP",
+			ipIndexZero: portMapHTTPResponse{
+				status: http.StatusInternalServerError,
+				body:   wanServiceErrorXML(713),
+			},
+			wantErr:          "WANPPPConnection",
+			wantRan:          true,
+			wantHTTPRequests: 1,
+		},
+		{
 			name:             "external control URLs are rejected",
 			ipControlURL:     "http://203.0.113.9/ctl",
 			pppControlURL:    "http://203.0.113.9/ctl",
