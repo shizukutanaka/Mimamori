@@ -48,33 +48,92 @@ func ParseResponse(b []byte, from netip.Addr) (Response, bool) {
 	}, true
 }
 
-func Discover(ctx context.Context, wait time.Duration) ([]Response, error) {
+func Discover(ctx context.Context, wait time.Duration, unicast ...netip.Addr) ([]Response, error) {
+	multicast, err := net.ResolveUDPAddr("udp4", "239.255.255.250:1900")
+	if err != nil {
+		return nil, fmt.Errorf("resolve SSDP multicast address: %w", err)
+	}
+
+	unicastTargets := make([]*net.UDPAddr, 0, len(unicast))
+	for _, address := range unicast {
+		if !address.IsValid() || !address.Is4() || !address.IsPrivate() || !address.IsGlobalUnicast() ||
+			address.IsUnspecified() || address.IsMulticast() {
+			continue
+		}
+		unicastTargets = append(unicastTargets, &net.UDPAddr{
+			IP:   net.IP(address.AsSlice()),
+			Port: 1900,
+		})
+	}
+
+	return discover(
+		ctx,
+		wait,
+		multicast,
+		unicastTargets,
+		func(ip netip.Addr) bool { return ip.Is4() && ip.IsPrivate() },
+		300*time.Millisecond,
+	)
+}
+
+func discover(
+	ctx context.Context,
+	wait time.Duration,
+	multicast *net.UDPAddr,
+	unicast []*net.UDPAddr,
+	accept func(netip.Addr) bool,
+	resend time.Duration,
+) ([]Response, error) {
 	conn, err := net.ListenPacket("udp4", ":0")
 	if err != nil {
 		return nil, fmt.Errorf("listen for SSDP: %w", err)
 	}
 	defer conn.Close()
 
-	target, err := net.ResolveUDPAddr("udp4", "239.255.255.250:1900")
-	if err != nil {
-		return nil, fmt.Errorf("resolve SSDP multicast address: %w", err)
-	}
-	message := []byte("M-SEARCH * HTTP/1.1\r\n" +
-		"HOST: 239.255.255.250:1900\r\n" +
-		"MAN: \"ssdp:discover\"\r\n" +
-		"MX: 2\r\n" +
-		"ST: ssdp:all\r\n\r\n")
-	for range 2 {
-		if _, err := conn.WriteTo(message, target); err != nil {
-			return nil, fmt.Errorf("send SSDP search: %w", err)
-		}
+	if accept == nil {
+		accept = func(ip netip.Addr) bool { return ip.Is4() && ip.IsPrivate() }
 	}
 
-	deadline := time.Now().Add(wait)
+	start := time.Now()
+	deadline := start.Add(wait)
 	if wait <= 0 {
-		deadline = time.Now()
+		deadline = start
 	}
-	_ = conn.SetReadDeadline(deadline)
+	if contextDeadline, ok := ctx.Deadline(); ok && contextDeadline.Before(deadline) {
+		deadline = contextDeadline
+	}
+	retryAt := start.Add(resend)
+	retryPending := resend > 0 && retryAt.Before(deadline)
+
+	var sendErrors []error
+	sentSuccessfully := false
+	send := func(target *net.UDPAddr, message []byte) {
+		if target == nil {
+			return
+		}
+		if _, err := conn.WriteTo(message, target); err != nil {
+			sendErrors = append(sendErrors, fmt.Errorf("%s: %w", target, err))
+			return
+		}
+		sentSuccessfully = true
+	}
+	sendRound := func() {
+		if multicast != nil {
+			send(multicast, ssdpSearchMessage("239.255.255.250:1900", true))
+		}
+		for _, target := range unicast {
+			if target != nil {
+				send(target, ssdpSearchMessage(target.IP.String()+":1900", false))
+			}
+		}
+	}
+	sendRound()
+
+	readDeadline := deadline
+	if retryPending {
+		readDeadline = retryAt
+	}
+	_ = conn.SetReadDeadline(readDeadline)
 	stopCancel := context.AfterFunc(ctx, func() {
 		_ = conn.SetReadDeadline(time.Now())
 	})
@@ -83,11 +142,21 @@ func Discover(ctx context.Context, wait time.Duration) ([]Response, error) {
 	responses := make([]Response, 0)
 	seen := make(map[string]struct{})
 	buffer := make([]byte, 2048)
+	retried := false
 	for {
 		n, sender, err := conn.ReadFrom(buffer)
 		if err != nil {
 			var netErr net.Error
 			if errors.As(err, &netErr) && netErr.Timeout() {
+				if retryPending && !retried && ctx.Err() == nil {
+					retried = true
+					sendRound()
+					if !sentSuccessfully {
+						return nil, sendSSDPError(sendErrors)
+					}
+					_ = conn.SetReadDeadline(deadline)
+					continue
+				}
 				break
 			}
 			if ctx.Err() != nil {
@@ -100,7 +169,7 @@ func Discover(ctx context.Context, wait time.Duration) ([]Response, error) {
 			continue
 		}
 		ip = ip.Unmap()
-		if !ip.Is4() || !ip.IsPrivate() {
+		if !accept(ip) {
 			continue
 		}
 		response, ok := ParseResponse(buffer[:n], ip)
@@ -114,7 +183,30 @@ func Discover(ctx context.Context, wait time.Duration) ([]Response, error) {
 		seen[key] = struct{}{}
 		responses = append(responses, response)
 	}
+	if !sentSuccessfully {
+		return nil, sendSSDPError(sendErrors)
+	}
 	return responses, nil
+}
+
+func ssdpSearchMessage(host string, multicast bool) []byte {
+	var message strings.Builder
+	message.WriteString("M-SEARCH * HTTP/1.1\r\n")
+	message.WriteString("HOST: ")
+	message.WriteString(host)
+	message.WriteString("\r\nMAN: \"ssdp:discover\"\r\n")
+	if multicast {
+		message.WriteString("MX: 2\r\n")
+	}
+	message.WriteString("ST: ssdp:all\r\n\r\n")
+	return []byte(message.String())
+}
+
+func sendSSDPError(sendErrors []error) error {
+	if len(sendErrors) == 0 {
+		return errors.New("send SSDP search: no targets")
+	}
+	return fmt.Errorf("send SSDP search: %w", errors.Join(sendErrors...))
 }
 
 type Service struct {
