@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"flag"
 	"io"
 	"net/http"
 	"net/netip"
@@ -448,6 +449,14 @@ func TestPreLanguage(t *testing.T) {
 		{"long separate", []string{"--lang", "ja"}, "ja"},
 		{"short equals", []string{"-lang=ja"}, "ja"},
 		{"long equals", []string{"--lang=ja"}, "ja"},
+		{"language after boolean flag", []string{"--json", "--lang=ja"}, "ja"},
+		{"language value can look like a flag", []string{"--state", "--", "--lang=ja"}, "ja"},
+		{"state consumes language-looking value", []string{"--state", "--lang=ja"}, "fr"},
+		{"help stops before language flag", []string{"--help", "--lang=ja"}, "fr"},
+		{"positional argument stops before language flag", []string{"scan-pos", "--lang=ja"}, "fr"},
+		{"lone dash stops before language flag", []string{"-", "--lang=ja"}, "fr"},
+		{"unknown flag stops before language flag", []string{"--unknown", "--lang=ja"}, "fr"},
+		{"unknown flag preserves earlier language", []string{"--lang=ja", "--unknown"}, "ja"},
 		{"auto uses detected language", []string{"--lang=auto"}, "fr"},
 		{"invalid uses detected language", []string{"--lang", "xx"}, "fr"},
 		{"flag after separator is ignored", []string{"--", "--lang=ja"}, "fr"},
@@ -455,8 +464,21 @@ func TestPreLanguage(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := preLanguage(test.args, getenv); got != test.want {
-				t.Fatalf("preLanguage(%v) = %q, want %q", test.args, got, test.want)
+			flags := flag.NewFlagSet("mimamori", flag.ContinueOnError)
+			flags.SetOutput(io.Discard)
+			registeredFlags := registerRunFlags(flags)
+			got := preLanguage(test.args, getenv, flags)
+
+			_ = flags.Parse(test.args)
+			parsed := i18n.Detect(getenv)
+			if resolved, err := resolveLanguage(*registeredFlags.language, getenv); err == nil {
+				parsed = resolved
+			}
+			if parsed != test.want {
+				t.Fatalf("FlagSet.Parse(%v) selected %q, want %q", test.args, parsed, test.want)
+			}
+			if got != parsed {
+				t.Fatalf("preLanguage(%v) = %q, want FlagSet language %q", test.args, got, parsed)
 			}
 		})
 	}
@@ -471,6 +493,7 @@ func TestRunLocalizedHelp(t *testing.T) {
 	}{
 		{"detected Japanese", []string{"--help"}, "ja_JP.UTF-8", "ja"},
 		{"explicit Korean", []string{"--lang=ko", "--help"}, "en_US.UTF-8", "ko"},
+		{"help before language uses detected language", []string{"--help", "--lang=ja"}, "fr_FR.UTF-8", "fr"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

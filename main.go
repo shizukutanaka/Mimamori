@@ -107,15 +107,21 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 }
 
 func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) string) runResult {
-	pre := preLanguage(args, getenv)
 	flags := flag.NewFlagSet("mimamori", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	jsonOutput := flags.Bool("json", false, i18n.T(pre, "flag_json"))
+	registeredFlags := registerRunFlags(flags)
+	jsonOutput := registeredFlags.jsonOutput
+	language := registeredFlags.language
+	statePath := registeredFlags.statePath
+	wait := registeredFlags.wait
+	showVersion := registeredFlags.showVersion
+	pre := preLanguage(args, getenv, flags)
+	flags.Lookup("json").Usage = i18n.T(pre, "flag_json")
 	languageHelp := i18n.T(pre, "flag_lang", strings.Join(i18n.Supported(), ", "))
-	language := flags.String("lang", "auto", languageHelp)
-	statePath := flags.String("state", "", i18n.T(pre, "flag_state"))
-	wait := flags.Duration("wait", 3*time.Second, i18n.T(pre, "flag_wait"))
-	showVersion := flags.Bool("version", false, i18n.T(pre, "flag_version"))
+	flags.Lookup("lang").Usage = languageHelp
+	flags.Lookup("state").Usage = i18n.T(pre, "flag_state")
+	flags.Lookup("wait").Usage = i18n.T(pre, "flag_wait")
+	flags.Lookup("version").Usage = i18n.T(pre, "flag_version")
 	flags.Usage = func() {
 		fmt.Fprintln(stderr, i18n.T(pre, "usage_header"))
 		flags.PrintDefaults()
