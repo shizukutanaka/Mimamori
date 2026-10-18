@@ -42,12 +42,12 @@ type output struct {
 	Score                int              `json:"score"`
 	Status               string           `json:"status"`
 	FirstRun             bool             `json:"first_run"`
-	LastCheckDays        *int             `json:"-"`
 	Incomplete           bool             `json:"incomplete"`
 	WiFiLocationRequired bool             `json:"wifi_location_required,omitempty"`
 	Gateway              string           `json:"gateway"`
 	Devices              []deviceOutput   `json:"devices"`
 	Findings             []report.Finding `json:"findings"`
+	LastCheckDays        *int             `json:"-"`
 }
 
 type historyLoadState uint8
@@ -259,11 +259,11 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 		}
 	}
 
-	now := time.Now().UTC()
 	var lastCheckDays *int
 	if existed && !firstRun && loadState == historyLoadReady {
 		if lastRun, ok := store.LastRun(); ok {
-			days := daysSinceLastCheck(now, lastRun)
+			checkNow := time.Now().UTC()
+			days := daysSinceLastCheck(checkNow, lastRun)
 			lastCheckDays = &days
 		}
 	}
@@ -275,6 +275,7 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 	}
 	deviceNames := make(map[netip.Addr]string, len(reportedHosts))
 	newDevices := make(map[netip.Addr]bool)
+	now := time.Now().UTC()
 	for _, host := range reportedHosts {
 		neighbor := neighborByIP[host]
 		name := deviceName(lang, host, neighbor, gatewayIP, descriptions)
@@ -301,7 +302,8 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 	result := output{
 		Version: version, Score: report.Score(findings), Status: status, FirstRun: firstRun, Incomplete: incomplete,
 		WiFiLocationRequired: errors.Is(wifiCheck.err, wifi.ErrLocationPermission),
-		LastCheckDays:        lastCheckDays, Gateway: gatewayString(gatewayIP), Devices: devices, Findings: findings,
+		Gateway:              gatewayString(gatewayIP), Devices: devices, Findings: findings,
+		LastCheckDays: lastCheckDays,
 	}
 	if err := writeOutput(stdout, result, *jsonOutput, lang); err != nil {
 		if *jsonOutput {
@@ -815,16 +817,8 @@ func renderText(writer io.Writer, result output, lang string) {
 		}
 	}
 	fmt.Fprintln(writer, i18n.T(lang, "device_counts", len(result.Devices), newCount))
-	if result.LastCheckDays != nil && !result.FirstRun {
-		days := *result.LastCheckDays
-		switch {
-		case days <= 0:
-			fmt.Fprintln(writer, i18n.T(lang, "last_check_today"))
-		case days == 1:
-			fmt.Fprintln(writer, i18n.T(lang, "last_check_day"))
-		default:
-			fmt.Fprintln(writer, i18n.T(lang, "last_check_days", days))
-		}
+	if line, ok := lastCheckLine(result, lang); ok {
+		fmt.Fprintln(writer, line)
 	}
 	if result.FirstRun {
 		fmt.Fprintf(writer, "\n%s\n", i18n.T(lang, "first_run"))
