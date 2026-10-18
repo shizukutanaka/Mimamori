@@ -286,6 +286,7 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 	}
 
 	findings := makeFindings(opened, discovery.responses, gatewayIP, descriptions, deviceNames, newDevices, portMappings, lang)
+	findings = markAnonymousFTP(findings, anonymousFTPHosts(ctx, opened), lang)
 	findings = append(findings, wifiFs...)
 	report.Sort(findings)
 	status := report.Status(report.Score(findings), findings)
