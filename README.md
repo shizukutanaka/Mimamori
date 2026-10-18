@@ -6,6 +6,8 @@ It checks devices visible in the local neighbor table, the default gateway, UPnP
 
 Mimamori never changes settings, contacts the Internet, or sends telemetry. Network discovery and checks stay on the private LAN. Its only persistent data is a local device-history file, used to report newly seen devices.
 
+On Linux, the Wi-Fi security check uses `nmcli`, falling back to `wpa_cli status` when NetworkManager is unavailable.
+
 ## Download and run
 
 Download the latest release from [GitHub Releases](https://github.com/shizukutanaka/Mimamori/releases/latest). Choose the file for your PC; `<version>` is the release tag shown on that page:
@@ -88,6 +90,8 @@ Mimamori は「今、家のネットワークは安全だろうか？」とい�
 近くで確認できる機器、標準ゲートウェイ、UPnP の機器情報、危険につながりやすい Telnet・FTP・VNC・Android Debug Bridge（ADB、TCP 5555）の入口に加え、OS の機能だけを使って接続中 Wi-Fi の安全方式も読み取り専用で確認します。さらに、自宅サブネット内の全アドレス（最大 254 件）にも危険なサービスのポートへの接続を試み、この PC と通信したことがない機器も確認します。接続を試みるだけで、設定は変更しません。ルーターの UPnP ポート転送も読み取り専用の問い合わせで調べます。点数は 0〜100 点で、見つかった問題ごとに対処方法と回復する点数を表示します。
 
 設定を変更せず、インターネットへ接続せず、利用状況も送信しません。機器の確認は家のネットワーク内だけで行います。保存するのは、新しい機器を次回から知らせるための機器履歴ファイルだけです。
+
+Linux では Wi-Fi の安全方式を `nmcli` で確認し、NetworkManager が利用できない場合は `wpa_cli status` を使います。
 
 ## ダウンロードと実行
 
