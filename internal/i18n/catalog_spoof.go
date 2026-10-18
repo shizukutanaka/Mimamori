@@ -18,8 +18,8 @@ var spoofMessages = map[string]map[string]string{
 		"gateway_spoof_fix": "請重新啟動路由器。如果此提示再次出現，請逐一中斷不熟悉的裝置並重新執行 Mimamori，以找出問題裝置，然後更新或移除該裝置。",
 	},
 	"es": {
-		"gateway_spoof":     "Otra dirección de tu red (%s) está usando la misma dirección de hardware (MAC) que el router. Un dispositivo podría estar suplantando al router para observar tu tráfico (suplantación ARP). Si el router usa intencionalmente dos direcciones, puedes ignorar este aviso.",
-		"gateway_spoof_fix": "Reinicia el router. Si vuelve a aparecer este aviso, desconecta los dispositivos que no reconozcas de uno en uno y vuelve a ejecutar Mimamori para encontrar la causa; luego actualiza o retira ese dispositivo.",
+		"gateway_spoof":     "Otra dirección de su red (%s) está usando la misma dirección de hardware (MAC) que el router. Un dispositivo podría estar suplantando al router para observar su tráfico (suplantación ARP). Si el router usa intencionalmente dos direcciones, puede ignorar este aviso.",
+		"gateway_spoof_fix": "Reinicie el router. Si vuelve a aparecer este aviso, desconecte los dispositivos que no reconozca de uno en uno y vuelva a ejecutar Mimamori para encontrar la causa; luego actualice o retire ese dispositivo.",
 	},
 	"pt": {
 		"gateway_spoof":     "Outro endereço na sua rede (%s) está usando o mesmo endereço de hardware (MAC) do roteador. Um dispositivo pode estar se passando pelo roteador para observar seu tráfego (falsificação ARP). Se o roteador usa intencionalmente dois endereços, você pode ignorar este aviso.",
