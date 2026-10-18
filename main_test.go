@@ -40,7 +40,7 @@ func TestMakeFindings(t *testing.T) {
 				ip,
 				map[netip.Addr]ssdp.Description{},
 				map[netip.Addr]string{ip: "Router", newIP: "Camera"},
-				map[netip.Addr]bool{newIP: true},
+				map[netip.Addr]string{newIP: "new_device"},
 				nil,
 				lang,
 			)
@@ -76,7 +76,7 @@ func TestADBOpenFinding(t *testing.T) {
 		netip.Addr{},
 		map[netip.Addr]ssdp.Description{},
 		map[netip.Addr]string{ip: deviceName},
-		map[netip.Addr]bool{},
+		map[netip.Addr]string{},
 		nil,
 		"en",
 	)
@@ -92,6 +92,82 @@ func TestADBOpenFinding(t *testing.T) {
 	}
 	if finding.Message != i18n.T("en", "adb_open", deviceName) || finding.Fix != i18n.T("en", "adb_open_fix") {
 		t.Fatalf("ADB finding text = %#v, want localized message and fix", finding)
+	}
+}
+
+func TestNewDeviceFindingClassification(t *testing.T) {
+	ip := netip.MustParseAddr("192.168.1.11")
+	deviceName := "My phone"
+	tests := []struct {
+		name       string
+		firstRun   bool
+		isNew      bool
+		mac        string
+		wantID     string
+		wantLevel  report.Level
+		wantPoints int
+	}{
+		{
+			name: "randomized new device", isNew: true, mac: "02:00:00:00:00:01",
+			wantID: "new_device_private", wantLevel: report.Caution, wantPoints: 3,
+		},
+		{
+			name: "universal new device", isNew: true, mac: "00:11:22:33:44:55",
+			wantID: "new_device", wantLevel: report.Caution, wantPoints: 3,
+		},
+		{
+			name: "first run", firstRun: true, isNew: true, mac: "02:00:00:00:00:01",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			findingID := newDeviceFindingID(test.firstRun, test.isNew, test.mac)
+			if findingID != test.wantID {
+				t.Fatalf("newDeviceFindingID() = %q, want %q", findingID, test.wantID)
+			}
+			newDeviceFindings := map[netip.Addr]string{}
+			if findingID != "" {
+				newDeviceFindings[ip] = findingID
+			}
+			for _, lang := range []string{"en", "ja"} {
+				findings := makeFindings(
+					nil, nil, netip.Addr{}, map[netip.Addr]ssdp.Description{},
+					map[netip.Addr]string{ip: deviceName}, newDeviceFindings, nil, lang,
+				)
+				if test.wantID == "" {
+					if len(findings) != 0 {
+						t.Fatalf("first-run findings = %#v, want none", findings)
+					}
+					continue
+				}
+				if len(findings) != 1 {
+					t.Fatalf("findings = %#v, want one", findings)
+				}
+				finding := findings[0]
+				if finding.ID != test.wantID || finding.Level != test.wantLevel || finding.Points != test.wantPoints {
+					t.Fatalf("finding = %#v, want %s/%s/%d", finding, test.wantID, test.wantLevel, test.wantPoints)
+				}
+				if got := report.Score(findings); got != 97 {
+					t.Errorf("score = %d, want 97", got)
+				}
+				if got := report.Status(report.Score(findings), findings); got != "caution" {
+					t.Errorf("status = %q, want caution", got)
+				}
+				if test.wantID == "new_device_private" {
+					wantMessages := map[string]string{
+						"en": "A device using a private (changing) address connected: My phone. Phones and PCs change this address over time, so it may be one of your own devices.",
+						"ja": "プライベートアドレス（変化するアドレス）を使う機器が接続しました: My phone。スマホや PC はこのアドレスを定期的に変えるため、ご家族の機器の可能性があります。",
+					}
+					wantFixes := map[string]string{
+						"en": "Check whether everyone's phones/PCs are accounted for. If you see devices you don't recognize repeatedly, change the Wi-Fi password and reconnect only your own devices.",
+						"ja": "家族のスマホや PC か確認してください。心当たりのない機器が繰り返し出る場合は、Wi-Fi のパスワードを変更し、自分の機器だけ再接続してください。",
+					}
+					if finding.Message != wantMessages[lang] || finding.Fix != wantFixes[lang] {
+						t.Errorf("%s private finding text = (%q, %q), want (%q, %q)", lang, finding.Message, finding.Fix, wantMessages[lang], wantFixes[lang])
+					}
+				}
+			}
+		})
 	}
 }
 
@@ -263,7 +339,7 @@ func TestPortForwardFindings(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			findings := makeFindings(
 				nil, nil, netip.Addr{}, map[netip.Addr]ssdp.Description{},
-				test.names, map[netip.Addr]bool{}, test.mappings, "en",
+				test.names, map[netip.Addr]string{}, test.mappings, "en",
 			)
 			portFindings := make([]report.Finding, 0)
 			for _, finding := range findings {
@@ -444,7 +520,7 @@ func TestRouterUPnPAttribution(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			findings := makeFindings(nil, test.responses, test.gateway, test.descriptions, map[netip.Addr]string{}, map[netip.Addr]bool{}, nil, "en")
+			findings := makeFindings(nil, test.responses, test.gateway, test.descriptions, map[netip.Addr]string{}, map[netip.Addr]string{}, nil, "en")
 			count := 0
 			for _, finding := range findings {
 				if finding.ID == "router_upnp" {
@@ -1015,7 +1091,7 @@ func TestFindingsCatalogHitForAllSupportedLanguages(t *testing.T) {
 			netip.Addr{},
 			map[netip.Addr]ssdp.Description{},
 			map[netip.Addr]string{ip: "Router"},
-			map[netip.Addr]bool{},
+			map[netip.Addr]string{},
 			[]ssdp.PortMapping{{
 				ExternalPort: 44338, InternalPort: 3389, InternalClient: ip.String(), Enabled: true,
 			}},
