@@ -29,6 +29,11 @@ func ParseARP(text string) []Neighbor {
 		if strings.Contains(strings.ToLower(line), "incomplete") {
 			continue
 		}
+		if fields := strings.Fields(line); len(fields) >= 6 && strings.HasPrefix(fields[2], "0x") {
+			if flags, err := strconv.ParseUint(fields[2][2:], 16, 32); err != nil || flags&0x2 == 0 {
+				continue
+			}
+		}
 
 		ipText := ipv4Pattern.FindString(line)
 		macText := macPattern.FindString(line)
