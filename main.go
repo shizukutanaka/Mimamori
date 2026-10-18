@@ -215,7 +215,7 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 		fmt.Fprintln(stderr, "warning: some checks could not run; this result may be incomplete")
 	}
 
-	opened := probe.Scan(ctx, scanTargets, []int{23, 2323, 21, 5900}, 700*time.Millisecond, 128)
+	opened := probe.Scan(ctx, scanTargets, []int{23, 2323, 21, 5900, 5555}, 700*time.Millisecond, 128)
 	neighbors := arp.neighbors
 	if len(scanTargets) > len(initialHosts) {
 		refreshed, err := lan.ReadARP(ctx)
@@ -638,6 +638,8 @@ func makeFindings(
 			findings = append(findings, report.Finding{ID: "ftp_open", Level: report.Caution, Points: 8, IP: item.IP.String(), Device: name})
 		case 5900:
 			findings = append(findings, report.Finding{ID: "vnc_open", Level: report.Caution, Points: 8, IP: item.IP.String(), Device: name})
+		case 5555:
+			findings = append(findings, report.Finding{ID: "adb_open", Level: report.Caution, Points: 8, IP: item.IP.String(), Device: name})
 		}
 	}
 	for ip, isNew := range newDevices {
@@ -714,7 +716,7 @@ func makeFindings(
 		finding.Message = i18n.T(lang, finding.ID)
 		finding.Fix = i18n.T(lang, finding.ID+"_fix")
 		switch finding.ID {
-		case "telnet_open", "ftp_open", "vnc_open", "new_device":
+		case "telnet_open", "ftp_open", "vnc_open", "adb_open", "new_device":
 			finding.Message = i18n.T(lang, finding.ID, finding.Device)
 		case "port_forward", "port_forward_risky":
 			finding.Message = i18n.T(lang, finding.ID, finding.Device, finding.Port)
@@ -732,7 +734,7 @@ func riskyPortForward(mapping ssdp.PortMapping) bool {
 		return false
 	}
 	switch mapping.InternalPort {
-	case 21, 22, 23, 2323, 445, 3389, 5900:
+	case 21, 22, 23, 2323, 445, 3389, 5900, 5555:
 		return true
 	default:
 		return false
