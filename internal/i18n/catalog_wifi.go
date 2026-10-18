@@ -18,7 +18,7 @@ var wifiMessages = map[string]map[string]string{
 		"wifi_weak_fix": "ルーターの設定で WPA2（AES）または WPA3 を選んでください。その後つながらない古い機器があれば、買い替えを検討してください。",
 	},
 	"zh-Hans": {
-		"wifi_open":     "这台电脑连接的 Wi-Fi 没有密码。附近的人可以加入网络，也可能看到你发送的内容。",
+		"wifi_open":     "这台电脑连接的 Wi-Fi 没有密码。附近的人可以加入网络，也可能看到您发送的内容。",
 		"wifi_open_fix": "在路由器设置中为 Wi-Fi 设置密码（选择 WPA2 或 WPA3），或改用其他网络。",
 		"wifi_wep":      "这个 Wi-Fi 使用旧的 WEP 保护，几分钟内就可能被破解。",
 		"wifi_wep_fix":  "在路由器设置中将 Wi-Fi 安全方式改为 WPA2 或 WPA3，并设置新密码。",
@@ -26,7 +26,7 @@ var wifiMessages = map[string]map[string]string{
 		"wifi_weak_fix": "在路由器设置中选择 WPA2（AES）或 WPA3。如果旧设备无法连接，可考虑更换设备。",
 	},
 	"zh-Hant": {
-		"wifi_open":     "這台電腦連線的 Wi-Fi 沒有密碼。附近的人可以加入網路，也可能看到你傳送的內容。",
+		"wifi_open":     "這台電腦連線的 Wi-Fi 沒有密碼。附近的人可以加入網路，也可能看到您傳送的內容。",
 		"wifi_open_fix": "在路由器設定中為 Wi-Fi 設定密碼（選擇 WPA2 或 WPA3），或改用其他網路。",
 		"wifi_wep":      "這個 Wi-Fi 使用舊的 WEP 保護，幾分鐘內就可能被破解。",
 		"wifi_wep_fix":  "在路由器設定中將 Wi-Fi 安全方式改為 WPA2 或 WPA3，並設定新密碼。",
@@ -34,12 +34,12 @@ var wifiMessages = map[string]map[string]string{
 		"wifi_weak_fix": "在路由器設定中選擇 WPA2（AES）或 WPA3。如果舊裝置無法連線，可考慮更換裝置。",
 	},
 	"es": {
-		"wifi_open":     "Este PC está conectado a una red Wi-Fi sin contraseña. Las personas cercanas pueden conectarse y quizá ver lo que envías.",
-		"wifi_open_fix": "Pon una contraseña de Wi-Fi en la configuración del router (elige WPA2 o WPA3) o usa otra red.",
+		"wifi_open":     "Este PC está conectado a una red Wi-Fi sin contraseña. Las personas cercanas pueden conectarse y quizá ver lo que envía.",
+		"wifi_open_fix": "Ponga una contraseña de Wi-Fi en la configuración del router (elija WPA2 o WPA3) o use otra red.",
 		"wifi_wep":      "Esta red Wi-Fi usa WEP, una protección antigua que se puede romper en pocos minutos.",
-		"wifi_wep_fix":  "En la configuración del router, cambia la seguridad Wi-Fi a WPA2 o WPA3 y pon una contraseña nueva.",
+		"wifi_wep_fix":  "En la configuración del router, cambie la seguridad Wi-Fi a WPA2 o WPA3 y ponga una contraseña nueva.",
 		"wifi_weak":     "Esta red Wi-Fi usa la antigua protección WPA/TKIP, más débil que los estándares actuales.",
-		"wifi_weak_fix": "En la configuración del router, elige WPA2 (AES) o WPA3. Si algún dispositivo antiguo deja de conectarse, considera cambiarlo.",
+		"wifi_weak_fix": "En la configuración del router, elija WPA2 (AES) o WPA3. Si algún dispositivo antiguo deja de conectarse, considere cambiarlo.",
 	},
 	"pt": {
 		"wifi_open":     "Este PC está ligado a uma rede Wi-Fi sem senha. Pessoas por perto podem entrar e talvez ver o que você envia.",
@@ -105,7 +105,7 @@ var wifiLocationMessages = map[string]map[string]string{
 		"wifi_location_notice": "由於 Windows 的位置存取已關閉，無法檢查 Wi-Fi 安全性。若要進行檢查，請開啟「設定 > 隱私權與安全性 > 位置」，然後重新執行。Mimamori 不會使用或傳送您的位置。",
 	},
 	"es": {
-		"wifi_location_notice": "No se pudo comprobar la seguridad de la red Wi-Fi porque el acceso a la ubicación de Windows está desactivado. Para comprobarla, activa la ubicación en Configuración > Privacidad y seguridad > Ubicación y vuelve a ejecutar la herramienta. Mimamori no usa ni envía tu ubicación.",
+		"wifi_location_notice": "No se pudo comprobar la seguridad de la red Wi-Fi porque el acceso a la ubicación de Windows está desactivado. Para comprobarla, active la ubicación en Configuración > Privacidad y seguridad > Ubicación y vuelva a ejecutar la herramienta. Mimamori no usa ni envía su ubicación.",
 	},
 	"pt": {
 		"wifi_location_notice": "Não foi possível verificar a segurança do Wi-Fi porque o acesso à localização do Windows está desativado. Para verificar, ative a localização em Configurações > Privacidade e segurança > Localização e execute novamente. O Mimamori não usa nem envia sua localização.",
