@@ -66,6 +66,106 @@ func TestMakeFindings(t *testing.T) {
 	}
 }
 
+func TestVulnerableUPnPComponent(t *testing.T) {
+	tests := []struct {
+		name       string
+		server     string
+		want       string
+		vulnerable bool
+	}{
+		{name: "libupnp 1.6.6", server: "Portable SDK for UPnP devices/1.6.6", want: "libupnp 1.6.6", vulnerable: true},
+		{name: "libupnp 1.6.17", server: "Portable SDK for UPnP devices/1.6.17", want: "libupnp 1.6.17", vulnerable: true},
+		{name: "libupnp threshold", server: "Portable SDK for UPnP devices/1.6.18"},
+		{name: "libupnp newer minor", server: "Portable SDK for UPnP devices/1.8.0"},
+		{name: "libupnp numeric minor", server: "Portable SDK for UPnP devices/1.14.0"},
+		{name: "Intel SDK case insensitive", server: "intel sdk for upnp devices/", want: "Intel SDK for UPnP devices (all versions)", vulnerable: true},
+		{name: "MiniUPnPd 1.0", server: "miniupnpd/1.0", want: "MiniUPnPd 1.0", vulnerable: true},
+		{name: "MiniUPnPd 1.3", server: "MINIUPNPD/1.3", want: "MiniUPnPd 1.3", vulnerable: true},
+		{name: "MiniUPnPd threshold", server: "miniupnpd/1.4"},
+		{name: "MiniUPnPd newer major", server: "miniupnpd/2.1"},
+		{name: "unparseable portable version", server: "Portable SDK for UPnP devices/1.6.x"},
+		{name: "unparseable miniupnpd version", server: "miniupnpd/1.x"},
+		{name: "garbage", server: "unrelated UPnP/1.0"},
+		{name: "empty", server: ""},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, vulnerable := vulnerableUPnPComponent(test.server)
+			if got != test.want || vulnerable != test.vulnerable {
+				t.Fatalf("vulnerableUPnPComponent(%q) = (%q, %t), want (%q, %t)",
+					test.server, got, vulnerable, test.want, test.vulnerable)
+			}
+		})
+	}
+}
+
+func TestVulnerableUPnPStackFindingsDeduplicateAndScoreByGateway(t *testing.T) {
+	gateway := netip.MustParseAddr("192.168.1.1")
+	client := netip.MustParseAddr("192.168.1.20")
+	responses := []ssdp.Response{
+		{IP: gateway, Server: "miniupnpd/1.0"},
+		{IP: gateway, Server: "Portable SDK for UPnP devices/1.6.6"},
+		{IP: client, Server: "Portable SDK for UPnP devices/1.6.17"},
+	}
+	findings := vulnerableUPnPStackFindings(
+		responses, gateway, map[netip.Addr]string{gateway: "Home Router"}, "en",
+	)
+	if len(findings) != 2 {
+		t.Fatalf("vulnerableUPnPStackFindings() returned %d findings, want 2: %#v", len(findings), findings)
+	}
+	if finding := findings[0]; finding.ID != "upnp_stack_vulnerable" ||
+		finding.Level != report.Danger || finding.Points != 15 ||
+		finding.IP != gateway.String() || finding.Device != "Home Router" {
+		t.Errorf("gateway finding = %#v, want Danger/15 for Home Router", finding)
+	}
+	if finding := findings[1]; finding.ID != "upnp_stack_vulnerable" ||
+		finding.Level != report.Caution || finding.Points != 8 ||
+		finding.IP != client.String() || finding.Device != client.String() {
+		t.Errorf("client finding = %#v, want Caution/8 with IP fallback", finding)
+	}
+	if got := report.Score(findings); got != 77 {
+		t.Errorf("report.Score() = %d, want 77", got)
+	}
+}
+
+func TestVulnerableUPnPStackMessageFormatting(t *testing.T) {
+	ip := netip.MustParseAddr("192.168.1.1")
+	tests := []struct {
+		lang        string
+		device      string
+		wantMessage string
+		wantFix     string
+	}{
+		{
+			lang:        "en",
+			device:      "Router",
+			wantMessage: "Router uses an old UPnP component (libupnp 1.6.6) with known remotely exploitable vulnerabilities.",
+			wantFix:     "Update the device's firmware. If no update exists, turn off UPnP on it (and on the router), and consider replacing it.",
+		},
+		{
+			lang:        "ja",
+			device:      "ルーター",
+			wantMessage: "「ルーター は、遠隔から悪用できる既知の脆弱性がある古い UPnP 部品（libupnp 1.6.6）を使っています。」",
+			wantFix:     "「ファームウェアを更新してください。更新がない場合は、その機器とルーターの UPnP を無効にし、買い替えも検討してください。」",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.lang, func(t *testing.T) {
+			findings := vulnerableUPnPStackFindings(
+				[]ssdp.Response{{IP: ip, Server: "Portable SDK for UPnP devices/1.6.6"}},
+				ip, map[netip.Addr]string{ip: test.device}, test.lang,
+			)
+			if len(findings) != 1 {
+				t.Fatalf("vulnerableUPnPStackFindings() returned %d findings, want 1", len(findings))
+			}
+			if findings[0].Message != test.wantMessage || findings[0].Fix != test.wantFix {
+				t.Fatalf("finding text = (%q, %q), want (%q, %q)",
+					findings[0].Message, findings[0].Fix, test.wantMessage, test.wantFix)
+			}
+		})
+	}
+}
+
 func TestADBOpenFinding(t *testing.T) {
 	ip := netip.MustParseAddr("192.168.1.10")
 	deviceName := "Android TV"
