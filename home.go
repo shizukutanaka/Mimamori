@@ -11,14 +11,32 @@ func homeNeighbors(neighbors []lan.Neighbor, prefixes []netip.Prefix, gateway ne
 		return neighbors
 	}
 
-	var homePrefixes []netip.Prefix
-	for _, prefix := range prefixes {
-		if prefix.Contains(gateway) {
-			homePrefixes = append(homePrefixes, prefix)
+	gatewayInNeighbors := false
+	for _, neighbor := range neighbors {
+		if neighbor.IP == gateway {
+			gatewayInNeighbors = true
+			break
 		}
 	}
-	if len(homePrefixes) == 0 {
+	if !gatewayInNeighbors {
 		return neighbors
+	}
+
+	mostSpecificBits := -1
+	for _, prefix := range prefixes {
+		if prefix.Contains(gateway) && prefix.Bits() > mostSpecificBits {
+			mostSpecificBits = prefix.Bits()
+		}
+	}
+	if mostSpecificBits < 0 {
+		return neighbors
+	}
+
+	var homePrefixes []netip.Prefix
+	for _, prefix := range prefixes {
+		if prefix.Contains(gateway) && prefix.Bits() == mostSpecificBits {
+			homePrefixes = append(homePrefixes, prefix)
+		}
 	}
 
 	filtered := make([]lan.Neighbor, 0, len(neighbors))
