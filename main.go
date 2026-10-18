@@ -63,6 +63,10 @@ type runResult struct {
 	pause bool
 }
 
+func earlyRunResult(code int, lang string, jsonMode bool) runResult {
+	return runResult{code: code, lang: lang, pause: !jsonMode}
+}
+
 type discoveryResult struct {
 	neighbors []lan.Neighbor
 	err       error
@@ -99,42 +103,51 @@ func main() {
 }
 
 func run(args []string, stdout, stderr io.Writer) runResult {
+	return runWithEnv(args, stdout, stderr, os.Getenv)
+}
+
+func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) string) runResult {
+	pre := preLanguage(args, getenv)
 	flags := flag.NewFlagSet("mimamori", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	jsonOutput := flags.Bool("json", false, "write JSON output")
-	languageHelp := fmt.Sprintf("output language: auto or one of %s", strings.Join(i18n.Supported(), ", "))
+	jsonOutput := flags.Bool("json", false, i18n.T(pre, "flag_json"))
+	languageHelp := i18n.T(pre, "flag_lang", strings.Join(i18n.Supported(), ", "))
 	language := flags.String("lang", "auto", languageHelp)
-	statePath := flags.String("state", "", "path to the local device history file")
-	wait := flags.Duration("wait", 3*time.Second, "time to listen for local UPnP devices")
-	showVersion := flags.Bool("version", false, "print version")
+	statePath := flags.String("state", "", i18n.T(pre, "flag_state"))
+	wait := flags.Duration("wait", 3*time.Second, i18n.T(pre, "flag_wait"))
+	showVersion := flags.Bool("version", false, i18n.T(pre, "flag_version"))
+	flags.Usage = func() {
+		fmt.Fprintln(stderr, i18n.T(pre, "usage_header"))
+		flags.PrintDefaults()
+	}
+	if err := flags.Parse(args); err != nil {
+		if err == flag.ErrHelp {
+			return earlyRunResult(0, pre, *jsonOutput)
+		}
+		return earlyRunResult(1, pre, *jsonOutput)
+	}
+	if flags.NArg() != 0 {
+		fmt.Fprintln(stderr, i18n.T(pre, "unexpected_argument", flags.Arg(0)))
+		return earlyRunResult(1, pre, *jsonOutput)
+	}
+	if *showVersion {
+		fmt.Fprintf(stdout, "Mimamori %s\n", version)
+		return earlyRunResult(0, pre, *jsonOutput)
+	}
+	resolvedLang, err := resolveLanguage(*language, pre, getenv)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return earlyRunResult(1, pre, *jsonOutput)
+	}
+	if *wait < 0 {
+		fmt.Fprintln(stderr, i18n.T(pre, "wait_negative"))
+		return earlyRunResult(1, pre, *jsonOutput)
+	}
 	lang := ""
 	finish := func(code int) runResult {
 		return runResult{code: code, lang: lang, pause: !*jsonOutput}
 	}
-	if err := flags.Parse(args); err != nil {
-		if err == flag.ErrHelp {
-			return finish(0)
-		}
-		return finish(1)
-	}
-	if flags.NArg() != 0 {
-		fmt.Fprintf(stderr, "unexpected argument: %s\n", flags.Arg(0))
-		return finish(1)
-	}
-	if *showVersion {
-		fmt.Fprintf(stdout, "Mimamori %s\n", version)
-		return finish(0)
-	}
-	resolvedLang, err := resolveLanguage(*language, os.Getenv)
-	if err != nil {
-		fmt.Fprintln(stderr, err)
-		return finish(1)
-	}
 	lang = resolvedLang
-	if *wait < 0 {
-		fmt.Fprintln(stderr, "--wait cannot be negative")
-		return finish(1)
-	}
 	if *statePath == "" {
 		var err error
 		*statePath, err = baseline.DefaultPath()
@@ -365,14 +378,42 @@ func writeOutput(writer io.Writer, result output, jsonMode bool, lang string) er
 	return nil
 }
 
-func resolveLanguage(flagValue string, getenv func(string) string) (string, error) {
+func preLanguage(args []string, getenv func(string) string) string {
+	value := ""
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--" {
+			break
+		}
+		if arg == "-lang" || arg == "--lang" {
+			value = ""
+			if i+1 < len(args) && args[i+1] != "--" {
+				value = args[i+1]
+				i++
+			}
+			continue
+		}
+		name, flagValue, hasValue := strings.Cut(arg, "=")
+		if hasValue && (name == "-lang" || name == "--lang") {
+			value = flagValue
+		}
+	}
+	if value != "auto" {
+		if lang, ok := i18n.Match(value); ok {
+			return lang
+		}
+	}
+	return i18n.Detect(getenv)
+}
+
+func resolveLanguage(flagValue, lang string, getenv func(string) string) (string, error) {
 	if flagValue == "auto" {
 		return i18n.Detect(getenv), nil
 	}
 	if lang, ok := i18n.Match(flagValue); ok {
 		return lang, nil
 	}
-	return "", fmt.Errorf("invalid --lang %q (use auto, or one of %s)", flagValue, strings.Join(i18n.Supported(), ", "))
+	return "", fmt.Errorf("%s", i18n.T(lang, "invalid_lang", flagValue, strings.Join(i18n.Supported(), ", ")))
 }
 
 func gatewayString(ip netip.Addr) string {
