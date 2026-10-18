@@ -1,8 +1,10 @@
 package wifi
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"runtime"
@@ -19,6 +21,8 @@ const (
 	WPA1orTKIP
 	Modern
 )
+
+var ErrLocationPermission = errors.New("Windows location permission is required to read Wi-Fi security")
 
 func Current(ctx context.Context) (Security, error) {
 	commandContext, cancel := context.WithTimeout(ctx, 15*time.Second)
@@ -37,11 +41,16 @@ func Current(ctx context.Context) (Security, error) {
 		return Unknown, nil
 	}
 
+	var errorOutput bytes.Buffer
+	command.Stderr = &errorOutput
 	output, err := command.Output()
+	if commandContext.Err() != nil {
+		return Unknown, commandContext.Err()
+	}
+	if runtime.GOOS == "windows" && (NetshNeedsLocation(string(output)) || NetshNeedsLocation(errorOutput.String())) {
+		return Unknown, ErrLocationPermission
+	}
 	if err != nil {
-		if commandContext.Err() != nil {
-			return Unknown, commandContext.Err()
-		}
 		return Unknown, nil
 	}
 
@@ -183,6 +192,10 @@ func ParseNetsh(text string) Security {
 		}
 	}
 	return best
+}
+
+func NetshNeedsLocation(text string) bool {
+	return strings.Contains(text, "ms-settings:privacy-location")
 }
 
 func isConnectedValue(value string) bool {

@@ -1,6 +1,9 @@
 package wifi
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestParseMacOS(t *testing.T) {
 	tests := []struct {
@@ -176,5 +179,60 @@ Cipher                 : CCMP`,
 				t.Fatalf("ParseNetsh() = %v, want %v", got, test.want)
 			}
 		})
+	}
+}
+
+func TestNetshNeedsLocation(t *testing.T) {
+	english := strings.ReplaceAll(`There is 1 interface on the system:
+
+Network shell commands need location permission to access WLAN information. Turn on Location services on the Location page in Privacy & security settings.
+
+Here is the URI for the Location page in the Settings app:
+
+ms-settings:privacy-location
+
+To open the Location page in the Settings app, hold down the Ctrl key and select the link, or run the following command:
+
+start ms-settings:privacy-location
+
+Or, to open the Location page from the Run dialog box, press Windows logo key + R, and then copy and paste the URI above.
+
+Function WlanQueryInterface returns error 5:
+
+Access is denied.`, "\n", "\r\n")
+	japanese := strings.ReplaceAll(`システム上に 1 つのインターフェイスがあります:
+
+WLAN 情報にアクセスするには位置情報のアクセス許可が必要です。プライバシーとセキュリティの設定で位置情報サービスをオンにしてください。
+
+設定アプリの位置情報ページを開く URI:
+
+ms-settings:privacy-location
+
+Function WlanQueryInterface はエラー 5 を返しました:
+
+アクセスが拒否されました。`, "\n", "\r\n")
+	for _, test := range []struct {
+		name string
+		text string
+	}{
+		{name: "English transcript", text: english},
+		{name: "Japanese transcript", text: japanese},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if !NetshNeedsLocation(test.text) {
+				t.Fatal("NetshNeedsLocation() = false, want true")
+			}
+			if got := ParseNetsh(test.text); got != Unknown {
+				t.Fatalf("ParseNetsh(location transcript) = %v, want Unknown", got)
+			}
+		})
+	}
+
+	connected := `Name                   : Wi-Fi
+State                  : connected
+Authentication         : WPA2-Personal
+Cipher                 : CCMP`
+	if NetshNeedsLocation(connected) {
+		t.Fatal("NetshNeedsLocation(connected interface) = true, want false")
 	}
 }

@@ -91,6 +91,42 @@ var wifiMessages = map[string]map[string]string{
 	},
 }
 
+var wifiLocationMessages = map[string]map[string]string{
+	"en": {
+		"wifi_location_notice": "Wi-Fi security could not be checked because Windows location access is off. To check it, turn on Settings > Privacy & security > Location and run again. Mimamori does not use or send your location.",
+	},
+	"ja": {
+		"wifi_location_notice": "Windows の位置情報がオフのため、Wi-Fi の暗号化を確認できませんでした。確認するには「設定 > プライバシーとセキュリティ > 位置情報」をオンにして、もう一度実行してください。Mimamori が位置情報を使ったり送信したりすることはありません。",
+	},
+	"zh-Hans": {
+		"wifi_location_notice": "由于 Windows 的位置访问已关闭，无法检查 Wi-Fi 安全性。要进行检查，请打开“设置 > 隐私和安全性 > 位置”，然后重新运行。Mimamori 不会使用或发送您的位置。",
+	},
+	"zh-Hant": {
+		"wifi_location_notice": "由於 Windows 的位置存取已關閉，無法檢查 Wi-Fi 安全性。若要進行檢查，請開啟「設定 > 隱私權與安全性 > 位置」，然後重新執行。Mimamori 不會使用或傳送您的位置。",
+	},
+	"es": {
+		"wifi_location_notice": "No se pudo comprobar la seguridad de la red Wi-Fi porque el acceso a la ubicación de Windows está desactivado. Para comprobarla, activa la ubicación en Configuración > Privacidad y seguridad > Ubicación y vuelve a ejecutar la herramienta. Mimamori no usa ni envía tu ubicación.",
+	},
+	"pt": {
+		"wifi_location_notice": "Não foi possível verificar a segurança do Wi-Fi porque o acesso à localização do Windows está desativado. Para verificar, ative a localização em Configurações > Privacidade e segurança > Localização e execute novamente. O Mimamori não usa nem envia sua localização.",
+	},
+	"fr": {
+		"wifi_location_notice": "La sécurité Wi-Fi n'a pas pu être vérifiée car l'accès à la localisation de Windows est désactivé. Pour la vérifier, activez la localisation dans Paramètres > Confidentialité et sécurité > Localisation, puis relancez l'outil. Mimamori n'utilise pas et n'envoie pas votre localisation.",
+	},
+	"de": {
+		"wifi_location_notice": "Die WLAN-Sicherheit konnte nicht überprüft werden, weil der Windows-Standortzugriff deaktiviert ist. Aktivieren Sie zur Prüfung den Standort unter Einstellungen > Datenschutz & Sicherheit > Standort und starten Sie das Programm erneut. Mimamori verwendet oder sendet Ihren Standort nicht.",
+	},
+	"ru": {
+		"wifi_location_notice": "Не удалось проверить безопасность Wi-Fi, потому что доступ к местоположению Windows отключён. Чтобы выполнить проверку, включите местоположение в разделе Параметры > Конфиденциальность и безопасность > Расположение и запустите программу ещё раз. Mimamori не использует и не отправляет данные о вашем местоположении.",
+	},
+	"ko": {
+		"wifi_location_notice": "Windows 위치 액세스가 꺼져 있어 Wi-Fi 보안을 확인할 수 없습니다. 확인하려면 설정 > 개인 정보 및 보안 > 위치에서 위치를 켜고 다시 실행하세요. Mimamori는 위치 정보를 사용하거나 전송하지 않습니다.",
+	},
+	"id": {
+		"wifi_location_notice": "Keamanan Wi-Fi tidak dapat diperiksa karena akses lokasi Windows dinonaktifkan. Untuk memeriksanya, aktifkan lokasi di Pengaturan > Privasi & keamanan > Lokasi, lalu jalankan kembali. Mimamori tidak menggunakan atau mengirim lokasi Anda.",
+	},
+}
+
 var wifiCatalogTargets = map[string]map[string]string{
 	"en":      messages["en"],
 	"ja":      messages["ja"],
@@ -107,6 +143,13 @@ var wifiCatalogTargets = map[string]map[string]string{
 
 func init() {
 	for lang, catalog := range wifiMessages {
+		target := wifiCatalogTargets[lang]
+		for key, value := range catalog {
+			target[key] = value
+		}
+		messages[lang] = target
+	}
+	for lang, catalog := range wifiLocationMessages {
 		target := wifiCatalogTargets[lang]
 		for key, value := range catalog {
 			target[key] = value

@@ -145,3 +145,11 @@ func TestTranslationFallback(t *testing.T) {
 		t.Fatalf("T() = %q", got)
 	}
 }
+
+func TestWiFiLocationNoticeCatalogCoverage(t *testing.T) {
+	for _, lang := range Supported() {
+		if value, ok := messages[lang]["wifi_location_notice"]; !ok || value == "" {
+			t.Errorf("%s catalog is missing wifi_location_notice", lang)
+		}
+	}
+}
