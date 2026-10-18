@@ -20,6 +20,8 @@ Download the latest release from [GitHub Releases](https://github.com/shizukutan
 | 64-bit Raspberry Pi | `mimamori-<version>-linux-arm64.tar.gz` |
 | 32-bit Raspberry Pi | `mimamori-<version>-linux-arm.tar.gz` |
 
+Requirements: Windows 10 or later, macOS 13 Ventura or later, or Linux with kernel 3.2 or later (32-bit Raspberry Pi: ARMv6 or later). Windows 7/8 and macOS 12 or earlier are not supported, because the Go toolchain used for the release builds no longer supports them.
+
 Download `SHA256SUMS` from the same release to verify the archive. Replace `<archive>` below with the downloaded file's name. Compare the hash printed on Windows or macOS with the matching line in `SHA256SUMS`; on Linux, run the check from the folder containing both files:
 
 ```text
@@ -102,6 +104,8 @@ Mimamori は「今、家のネットワークは安全だろうか？」とい�
 | ほとんどの Linux PC | `mimamori-<version>-linux-amd64.tar.gz` |
 | 64 ビット Raspberry Pi | `mimamori-<version>-linux-arm64.tar.gz` |
 | 32 ビット Raspberry Pi | `mimamori-<version>-linux-arm.tar.gz` |
+
+動作環境: Windows 10 以降、macOS 13 Ventura 以降、または Linux カーネル 3.2 以降（32 ビット Raspberry Pi は ARMv6 以降）。Windows 7・8 と macOS 12 以前には対応していません。配布物のビルドに使う Go がこれらに対応していないためです。
 
 同じリリースにある `SHA256SUMS` もダウンロードして、ファイルが正しいか確認できます。コマンド中の `<ファイル名>` はダウンロードしたファイル名に置き換えてください。Windows と macOS では表示されたハッシュを `SHA256SUMS` の該当行と比べてください。Linux では両方のファイルがあるフォルダーで実行します。
 
