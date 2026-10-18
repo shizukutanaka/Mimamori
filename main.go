@@ -452,13 +452,25 @@ func mergeNeighbors(original, refreshed []lan.Neighbor) []lan.Neighbor {
 }
 
 func deviceHosts(neighbors []lan.Neighbor, gateway netip.Addr, responses []ssdp.Response, opened []probe.Open) []netip.Addr {
-	openedHosts := make([]netip.Addr, 0, len(opened))
-	for _, item := range opened {
-		if item.IP.Is4() && item.IP.IsPrivate() {
-			openedHosts = append(openedHosts, item.IP)
-		}
+	hosts := collectHosts(neighbors, gateway, responses)
+	seen := make(map[netip.Addr]struct{}, len(hosts)+len(opened))
+	for _, host := range hosts {
+		seen[host] = struct{}{}
 	}
-	return mergeHosts(collectHosts(neighbors, gateway, responses), openedHosts)
+	for _, item := range opened {
+		if !item.IP.Is4() || !item.IP.IsPrivate() {
+			continue
+		}
+		if _, exists := seen[item.IP]; exists {
+			continue
+		}
+		seen[item.IP] = struct{}{}
+		hosts = append(hosts, item.IP)
+	}
+	sort.Slice(hosts, func(i, j int) bool {
+		return hosts[i].Less(hosts[j])
+	})
+	return hosts
 }
 
 func newUPnPHTTPClient() *http.Client {

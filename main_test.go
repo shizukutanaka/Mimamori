@@ -539,7 +539,7 @@ func TestDeviceHostsIncludesOnlyObservedSweptHosts(t *testing.T) {
 	}
 }
 
-func TestDeviceHostsKeepsObservedHostsAtCap(t *testing.T) {
+func TestDeviceHostsKeepsOpenedHostsBeyondScanCap(t *testing.T) {
 	neighbors := make([]lan.Neighbor, 0, 1000)
 	for i := 0; i < 1000; i++ {
 		ip := netip.AddrFrom4([4]byte{10, 0, byte(i / 250), byte(i%250 + 1)})
@@ -550,17 +550,53 @@ func TestDeviceHostsKeepsObservedHostsAtCap(t *testing.T) {
 		opened = append(opened, probe.Open{IP: netip.AddrFrom4([4]byte{10, 1, 0, byte(i + 1)}), Port: 21})
 	}
 	got := deviceHosts(neighbors, netip.Addr{}, nil, opened)
-	if len(got) != maxScanHosts {
-		t.Fatalf("deviceHosts() returned %d hosts, want %d", len(got), maxScanHosts)
+	if len(got) != len(neighbors)+len(opened) {
+		t.Fatalf("deviceHosts() returned %d hosts, want %d", len(got), len(neighbors)+len(opened))
 	}
 	present := make(map[netip.Addr]bool, len(got))
-	for _, host := range got {
+	for i, host := range got {
+		if i > 0 && !got[i-1].Less(host) {
+			t.Fatalf("deviceHosts() is not sorted and unique at %s, %s", got[i-1], host)
+		}
 		present[host] = true
 	}
 	for _, neighbor := range neighbors {
 		if !present[neighbor.IP] {
-			t.Fatalf("observed neighbor %s was dropped at the cap", neighbor.IP)
+			t.Fatalf("observed neighbor %s was dropped", neighbor.IP)
 		}
+	}
+	for _, item := range opened {
+		if !present[item.IP] {
+			t.Fatalf("opened host %s was dropped", item.IP)
+		}
+	}
+}
+
+func TestDeviceHostsKeepsOpenedHostsBeyondARPCap(t *testing.T) {
+	neighbors := make([]lan.Neighbor, 0, maxScanHosts)
+	for i := 0; i < maxScanHosts; i++ {
+		ip := netip.AddrFrom4([4]byte{10, 0, byte(i / 254), byte(i%254 + 1)})
+		neighbors = append(neighbors, lan.Neighbor{IP: ip, MAC: "aa:bb:cc:dd:ee:ff"})
+	}
+	openedOnly := netip.MustParseAddr("192.168.1.30")
+	opened := []probe.Open{
+		{IP: neighbors[0].IP, Port: 23},
+		{IP: openedOnly, Port: 23},
+	}
+
+	got := deviceHosts(neighbors, netip.Addr{}, nil, opened)
+	if len(got) != maxScanHosts+1 {
+		t.Fatalf("deviceHosts() returned %d hosts, want %d", len(got), maxScanHosts+1)
+	}
+	present := make(map[netip.Addr]bool, len(got))
+	for i, host := range got {
+		if i > 0 && !got[i-1].Less(host) {
+			t.Fatalf("deviceHosts() is not sorted and unique at %s, %s", got[i-1], host)
+		}
+		present[host] = true
+	}
+	if !present[openedOnly] {
+		t.Fatalf("opened host %s is missing", openedOnly)
 	}
 }
 
