@@ -18,6 +18,7 @@ type Finding struct {
 	Points  int    `json:"points"`
 	IP      string `json:"ip,omitempty"`
 	Device  string `json:"device,omitempty"`
+	Port    int    `json:"port,omitempty"`
 	Message string `json:"message"`
 	Fix     string `json:"fix"`
 }

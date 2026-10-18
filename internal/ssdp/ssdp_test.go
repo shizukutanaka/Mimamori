@@ -46,16 +46,84 @@ func TestParseResponse(t *testing.T) {
 }
 
 func TestParseDescription(t *testing.T) {
-	description := `<root><specVersion><major>1</major><minor>0</minor></specVersion><device>
+	xmlDescription := `<root><specVersion><major>1</major><minor>0</minor></specVersion>
+<URLBase>http://192.168.1.20:54321/</URLBase><device>
 <deviceType>urn:schemas-upnp-org:device:InternetGatewayDevice:1</deviceType>
 <friendlyName>Home Router</friendlyName><manufacturer>Example</manufacturer><modelName>Router X</modelName>
 </device></root>`
-	got, err := ParseDescription(strings.NewReader(description))
+	got, err := ParseDescription(strings.NewReader(xmlDescription))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.FriendlyName != "Home Router" || got.Manufacturer != "Example" || got.ModelName != "Router X" || got.DeviceType == "" {
+	if got.Device.FriendlyName != "Home Router" || got.Device.Manufacturer != "Example" ||
+		got.Device.ModelName != "Router X" || got.Device.DeviceType == "" {
 		t.Fatalf("ParseDescription() = %#v", got)
+	}
+	if got.URLBase != "http://192.168.1.20:54321/" {
+		t.Fatalf("URLBase = %q", got.URLBase)
+	}
+}
+
+func TestWANConnectionNestedDevice(t *testing.T) {
+	xmlDescription := `<root><device>
+<deviceType>urn:schemas-upnp-org:device:InternetGatewayDevice:1</deviceType>
+<deviceList><device><deviceType>urn:schemas-upnp-org:device:WANDevice:1</deviceType>
+<deviceList><device><deviceType>urn:schemas-upnp-org:device:WANConnectionDevice:1</deviceType>
+<serviceList><service><serviceType>urn:schemas-upnp-org:service:WANIPConnection:1</serviceType><controlURL>/ctl/IPConn</controlURL></service></serviceList>
+</device></deviceList></device></deviceList>
+</device></root>`
+	description, err := ParseDescription(strings.NewReader(xmlDescription))
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, ok := description.Device.WANConnection()
+	if !ok || service.ServiceType != "urn:schemas-upnp-org:service:WANIPConnection:1" || service.ControlURL != "/ctl/IPConn" {
+		t.Fatalf("WANConnection() = %#v, %v", service, ok)
+	}
+}
+
+func TestWANConnectionPPP(t *testing.T) {
+	description, err := ParseDescription(strings.NewReader(`<root><device><deviceList><device><serviceList>
+<service><serviceType>urn:schemas-upnp-org:service:WANPPPConnection:1</serviceType><controlURL>/ctl/PPPConn</controlURL></service>
+</serviceList></device></deviceList></device></root>`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, ok := description.Device.WANConnection()
+	if !ok || service.ServiceType != "urn:schemas-upnp-org:service:WANPPPConnection:1" {
+		t.Fatalf("WANConnection() = %#v, %v", service, ok)
+	}
+}
+
+func TestDeviceIsIGD(t *testing.T) {
+	tests := []struct {
+		name   string
+		device Device
+		want   bool
+	}{
+		{
+			name:   "root IGD",
+			device: Device{DeviceType: "urn:schemas-upnp-org:device:InternetGatewayDevice:1"},
+			want:   true,
+		},
+		{
+			name: "nested IGD",
+			device: Device{
+				DeviceType: "urn:schemas-upnp-org:device:Basic:1",
+				Devices: []Device{{
+					DeviceType: "urn:schemas-upnp-org:device:INTERNETGATEWAYDEVICE:1",
+				}},
+			},
+			want: true,
+		},
+		{name: "not an IGD", device: Device{DeviceType: "urn:schemas-upnp-org:device:Basic:1"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := test.device.IsIGD(); got != test.want {
+				t.Fatalf("IsIGD() = %v, want %v", got, test.want)
+			}
+		})
 	}
 }
 
@@ -79,6 +147,52 @@ func TestAllowedLocation(t *testing.T) {
 	}
 }
 
+func TestControlURL(t *testing.T) {
+	from := netip.MustParseAddr("192.168.1.20")
+	tests := []struct {
+		name        string
+		location    string
+		urlBase     string
+		controlURL  string
+		want        string
+		wantAllowed bool
+	}{
+		{
+			name:        "relative to location",
+			location:    "http://192.168.1.20:54321/device/description.xml",
+			controlURL:  "../control/WANIPConn",
+			want:        "http://192.168.1.20:54321/control/WANIPConn",
+			wantAllowed: true,
+		},
+		{
+			name:        "relative to URLBase",
+			location:    "http://192.168.1.20:54321/device.xml",
+			urlBase:     "http://192.168.1.20:1234/base/",
+			controlURL:  "WANIPConn",
+			want:        "http://192.168.1.20:1234/base/WANIPConn",
+			wantAllowed: true,
+		},
+		{
+			name:        "absolute",
+			location:    "http://192.168.1.20/device.xml",
+			controlURL:  "http://192.168.1.20:1234/control",
+			want:        "http://192.168.1.20:1234/control",
+			wantAllowed: true,
+		},
+		{name: "different host", location: "http://192.168.1.20/device.xml", controlURL: "http://192.168.1.21/control"},
+		{name: "public host", location: "http://192.168.1.20/device.xml", controlURL: "http://8.8.8.8/control"},
+		{name: "https", location: "http://192.168.1.20/device.xml", controlURL: "https://192.168.1.20/control"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, ok := ControlURL(test.location, test.urlBase, test.controlURL, from)
+			if ok != test.wantAllowed || (ok && got != test.want) {
+				t.Fatalf("ControlURL() = %q, %v; want %q, %v", got, ok, test.want, test.wantAllowed)
+			}
+		})
+	}
+}
+
 func TestFetchDescription(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -88,12 +202,12 @@ func TestFetchDescription(t *testing.T) {
 	}))
 	defer server.Close()
 
-	device, err := FetchDescription(context.Background(), server.Client(), server.URL)
+	description, err := FetchDescription(context.Background(), server.Client(), server.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if device.FriendlyName != "Test device" {
-		t.Fatalf("FetchDescription() = %#v", device)
+	if description.Device.FriendlyName != "Test device" || description.Location != server.URL {
+		t.Fatalf("FetchDescription() = %#v", description)
 	}
 }
 
