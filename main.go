@@ -22,6 +22,7 @@ import (
 	"github.com/shizukutanaka/Mimamori/internal/console"
 	"github.com/shizukutanaka/Mimamori/internal/i18n"
 	"github.com/shizukutanaka/Mimamori/internal/lan"
+	"github.com/shizukutanaka/Mimamori/internal/mdns"
 	"github.com/shizukutanaka/Mimamori/internal/probe"
 	"github.com/shizukutanaka/Mimamori/internal/report"
 	"github.com/shizukutanaka/Mimamori/internal/ssdp"
@@ -259,6 +260,7 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 	}
 
 	reportedHosts := deviceHosts(neighbors, gatewayIP, discovery.responses, opened)
+	mdnsNames := mdns.ReverseNames(ctx, reportedHosts, time.Second)
 	neighborByIP := make(map[netip.Addr]lan.Neighbor, len(neighbors))
 	for _, neighbor := range neighbors {
 		neighborByIP[neighbor.IP] = neighbor
@@ -268,7 +270,7 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 	now := time.Now().UTC()
 	for _, host := range reportedHosts {
 		neighbor := neighborByIP[host]
-		name := deviceName(lang, host, neighbor, gatewayIP, descriptions)
+		name := deviceName(lang, host, neighbor, gatewayIP, descriptions, mdnsNames)
 		deviceNames[host] = name
 		if neighbor.MAC == "" {
 			continue
@@ -578,7 +580,14 @@ func fetchDescriptions(ctx context.Context, client *http.Client, responses []ssd
 	return devices, errs
 }
 
-func deviceName(lang string, ip netip.Addr, neighbor lan.Neighbor, gateway netip.Addr, descriptions map[netip.Addr]ssdp.Description) string {
+func deviceName(
+	lang string,
+	ip netip.Addr,
+	neighbor lan.Neighbor,
+	gateway netip.Addr,
+	descriptions map[netip.Addr]ssdp.Description,
+	mdnsNames map[netip.Addr]string,
+) string {
 	if description, ok := descriptions[ip]; ok {
 		if name := sanitizeName(description.Device.FriendlyName); name != "" {
 			return name
@@ -590,6 +599,9 @@ func deviceName(lang string, ip netip.Addr, neighbor lan.Neighbor, gateway netip
 	}
 	if gateway.IsValid() && ip == gateway {
 		return i18n.T(lang, "router")
+	}
+	if name := sanitizeName(mdnsNames[ip]); name != "" {
+		return name
 	}
 	if neighbor.MAC != "" && lan.IsRandomizedMAC(neighbor.MAC) {
 		return i18n.T(lang, "randomized_device")

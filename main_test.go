@@ -401,9 +401,74 @@ func TestSanitizeName(t *testing.T) {
 	ip := netip.MustParseAddr("192.168.1.20")
 	name := deviceName("en", ip, lan.Neighbor{}, netip.Addr{}, map[netip.Addr]ssdp.Description{
 		ip: {Device: ssdp.Device{Manufacturer: "Brand\x1b", ModelName: "Model\u200f"}},
-	})
+	}, nil)
 	if name != "Brand Model" {
 		t.Fatalf("deviceName() = %q, want sanitized manufacturer and model", name)
+	}
+}
+
+func TestDeviceNamePrecedence(t *testing.T) {
+	ip := netip.MustParseAddr("192.168.1.20")
+	router := netip.MustParseAddr("192.168.1.1")
+	randomized := lan.Neighbor{MAC: "02:11:22:33:44:55"}
+	tests := []struct {
+		name         string
+		ip           netip.Addr
+		neighbor     lan.Neighbor
+		gateway      netip.Addr
+		descriptions map[netip.Addr]ssdp.Description
+		mdnsNames    map[netip.Addr]string
+		want         string
+	}{
+		{
+			name:     "SSDP description wins",
+			ip:       router,
+			neighbor: randomized,
+			gateway:  router,
+			descriptions: map[netip.Addr]ssdp.Description{
+				router: {Device: ssdp.Device{FriendlyName: "Living Room"}},
+			},
+			mdnsNames: map[netip.Addr]string{router: "router.local"},
+			want:      "Living Room",
+		},
+		{
+			name:      "router label wins over mDNS",
+			ip:        router,
+			neighbor:  randomized,
+			gateway:   router,
+			mdnsNames: map[netip.Addr]string{router: "home-gateway"},
+			want:      i18n.T("en", "router"),
+		},
+		{
+			name:      "sanitized mDNS name wins over randomized label",
+			ip:        ip,
+			neighbor:  randomized,
+			mdnsNames: map[netip.Addr]string{ip: " Phone\u0000.local "},
+			want:      "Phone.local",
+		},
+		{
+			name:     "randomized label wins over IP",
+			ip:       ip,
+			neighbor: randomized,
+			want:     i18n.T("en", "randomized_device"),
+		},
+		{name: "IP fallback", ip: ip, want: ip.String()},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := deviceName(
+				"en",
+				test.ip,
+				test.neighbor,
+				test.gateway,
+				test.descriptions,
+				test.mdnsNames,
+			)
+			if got != test.want {
+				t.Fatalf("deviceName() = %q, want %q", got, test.want)
+			}
+		})
 	}
 }
 
