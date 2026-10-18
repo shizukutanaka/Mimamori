@@ -12,9 +12,9 @@ import (
 )
 
 var (
-	portableSDKVersionPattern = regexp.MustCompile(`(?i)Portable SDK for UPnP devices/([0-9]+)\.([0-9]+)\.([0-9]+)`)
-	intelSDKPattern           = regexp.MustCompile(`(?i)Intel SDK for UPnP devices/`)
-	miniupnpdVersionPattern   = regexp.MustCompile(`(?i)miniupnpd/([0-9]+)\.([0-9]+)`)
+	portableSDKVersionPattern = regexp.MustCompile(`(?i)(?:^|[\s,;(])Portable SDK for UPnP devices/([0-9]+)\.([0-9]+)\.([0-9]+)`)
+	intelSDKPattern           = regexp.MustCompile(`(?i)(?:^|[\s,;(])Intel SDK for UPnP devices/`)
+	miniupnpdVersionPattern   = regexp.MustCompile(`(?i)(?:^|[\s,;(])miniupnpd/([0-9]+)\.([0-9]+)`)
 )
 
 func vulnerableUPnPStackFindings(
