@@ -47,7 +47,6 @@ type output struct {
 	Gateway              string           `json:"gateway"`
 	Devices              []deviceOutput   `json:"devices"`
 	Findings             []report.Finding `json:"findings"`
-	LastCheckDays        *int             `json:"-"`
 }
 
 type historyLoadState uint8
@@ -303,9 +302,8 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 		Version: version, Score: report.Score(findings), Status: status, FirstRun: firstRun, Incomplete: incomplete,
 		WiFiLocationRequired: errors.Is(wifiCheck.err, wifi.ErrLocationPermission),
 		Gateway:              gatewayString(gatewayIP), Devices: devices, Findings: findings,
-		LastCheckDays: lastCheckDays,
 	}
-	if err := writeOutput(stdout, result, *jsonOutput, lang); err != nil {
+	if err := writeOutput(stdout, result, *jsonOutput, lang, lastCheckDays); err != nil {
 		if *jsonOutput {
 			fmt.Fprintf(stderr, "warning: cannot write JSON output: %v\n", err)
 		} else {
@@ -355,7 +353,7 @@ func shouldSaveHistory(outputSucceeded, firstRun bool, store baseline.Store, loa
 	return !firstRun || len(store.Devices) > 0
 }
 
-func writeOutput(writer io.Writer, result output, jsonMode bool, lang string) error {
+func writeOutput(writer io.Writer, result output, jsonMode bool, lang string, lastCheckDays ...*int) error {
 	var rendered bytes.Buffer
 	if jsonMode {
 		encoder := json.NewEncoder(&rendered)
@@ -364,7 +362,7 @@ func writeOutput(writer io.Writer, result output, jsonMode bool, lang string) er
 			return err
 		}
 	} else {
-		renderText(&rendered, result, lang)
+		renderText(&rendered, result, lang, lastCheckDays...)
 	}
 	written, err := writer.Write(rendered.Bytes())
 	if err != nil {
@@ -801,7 +799,7 @@ func wifiFindings(security wifi.Security, lang string) []report.Finding {
 	}}
 }
 
-func renderText(writer io.Writer, result output, lang string) {
+func renderText(writer io.Writer, result output, lang string, lastCheckDays ...*int) {
 	fmt.Fprintln(writer, i18n.T(lang, "title"))
 	fmt.Fprintln(writer, i18n.T(lang, "score", i18n.T(lang, result.Status), result.Score))
 	if result.Incomplete {
@@ -817,7 +815,11 @@ func renderText(writer io.Writer, result output, lang string) {
 		}
 	}
 	fmt.Fprintln(writer, i18n.T(lang, "device_counts", len(result.Devices), newCount))
-	if line, ok := lastCheckLine(result, lang); ok {
+	var lastCheckDayCount *int
+	if len(lastCheckDays) > 0 {
+		lastCheckDayCount = lastCheckDays[0]
+	}
+	if line, ok := lastCheckLine(result, lastCheckDayCount, lang); ok {
 		fmt.Fprintln(writer, line)
 	}
 	if result.FirstRun {

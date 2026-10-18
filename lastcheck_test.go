@@ -51,8 +51,8 @@ func TestRenderTextLastCheck(t *testing.T) {
 			days := test.days
 			var buffer bytes.Buffer
 			renderText(&buffer, output{
-				Score: 100, Status: "safe", LastCheckDays: &days,
-			}, test.lang)
+				Score: 100, Status: "safe",
+			}, test.lang, &days)
 
 			lines := strings.Split(strings.TrimSuffix(buffer.String(), "\n"), "\n")
 			countLine := i18n.T(test.lang, "device_counts", 0, 0)
@@ -77,8 +77,8 @@ func TestRenderTextOmitsLastCheckOnFirstRun(t *testing.T) {
 	days := 12
 	var buffer bytes.Buffer
 	renderText(&buffer, output{
-		Score: 100, Status: "safe", FirstRun: true, LastCheckDays: &days,
-	}, "ja")
+		Score: 100, Status: "safe", FirstRun: true,
+	}, "ja", &days)
 
 	if strings.Contains(buffer.String(), "前回の確認:") {
 		t.Fatalf("first-run output contains a last-check line: %q", buffer.String())
@@ -88,7 +88,7 @@ func TestRenderTextOmitsLastCheckOnFirstRun(t *testing.T) {
 func TestWriteOutputOmitsLastCheckFromJSON(t *testing.T) {
 	days := 12
 	var buffer bytes.Buffer
-	if err := writeOutput(&buffer, output{Score: 100, Status: "safe", LastCheckDays: &days}, true, "en"); err != nil {
+	if err := writeOutput(&buffer, output{Score: 100, Status: "safe"}, true, "en", &days); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(buffer.String(), "last_check") {
