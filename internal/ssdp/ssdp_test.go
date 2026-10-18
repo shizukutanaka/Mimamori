@@ -1,13 +1,164 @@
 package ssdp
 
 import (
+	"bytes"
 	"context"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 )
+
+func TestDiscoverResendsAfterDelay(t *testing.T) {
+	target, requests, _ := startSSDPTestResponder(t, func(request int, _ []byte) bool {
+		return request == 2
+	})
+
+	responses, err := discover(
+		context.Background(),
+		200*time.Millisecond,
+		target,
+		nil,
+		netip.Addr.IsLoopback,
+		20*time.Millisecond,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if requests.Load() < 2 {
+		t.Fatalf("received %d searches, want retransmission", requests.Load())
+	}
+	if len(responses) != 1 {
+		t.Fatalf("Discover() returned %d responses, want 1", len(responses))
+	}
+}
+
+func TestDiscoverUnicastSucceedsWhenMulticastSendFails(t *testing.T) {
+	target, _, _ := startSSDPTestResponder(t, func(int, []byte) bool { return true })
+	unreachableMulticast := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0}
+
+	responses, err := discover(
+		context.Background(),
+		200*time.Millisecond,
+		unreachableMulticast,
+		[]*net.UDPAddr{target},
+		netip.Addr.IsLoopback,
+		20*time.Millisecond,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(responses) != 1 {
+		t.Fatalf("Discover() returned %d responses, want 1", len(responses))
+	}
+}
+
+func TestDiscoverReturnsErrorWhenAllSendsFail(t *testing.T) {
+	unreachable := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0}
+
+	_, err := discover(
+		context.Background(),
+		200*time.Millisecond,
+		unreachable,
+		[]*net.UDPAddr{unreachable},
+		netip.Addr.IsLoopback,
+		20*time.Millisecond,
+	)
+	if err == nil {
+		t.Fatal("Discover() error = nil, want all sends failed error")
+	}
+}
+
+func TestDiscoverDeduplicatesRepliesAcrossRounds(t *testing.T) {
+	target, requests, _ := startSSDPTestResponder(t, func(int, []byte) bool { return true })
+
+	responses, err := discover(
+		context.Background(),
+		100*time.Millisecond,
+		target,
+		nil,
+		netip.Addr.IsLoopback,
+		20*time.Millisecond,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if requests.Load() < 2 {
+		t.Fatalf("received %d searches, want both rounds", requests.Load())
+	}
+	if len(responses) != 1 {
+		t.Fatalf("Discover() returned %d duplicate responses, want 1", len(responses))
+	}
+}
+
+func TestDiscoverUnicastSearchMessage(t *testing.T) {
+	target, _, received := startSSDPTestResponder(t, func(int, []byte) bool { return true })
+
+	_, err := discover(
+		context.Background(),
+		40*time.Millisecond,
+		nil,
+		[]*net.UDPAddr{target},
+		netip.Addr.IsLoopback,
+		100*time.Millisecond,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := string(<-received)
+	if !strings.Contains(request, "HOST: 127.0.0.1:1900\r\n") {
+		t.Fatalf("unicast search HOST header = %q, want target IP with port 1900", request)
+	}
+	if !strings.Contains(request, "MAN: \"ssdp:discover\"\r\n") || !strings.Contains(request, "ST: ssdp:all\r\n") {
+		t.Fatalf("unicast search is missing MAN or ST: %q", request)
+	}
+	if strings.Contains(request, "\r\nMX:") {
+		t.Fatalf("unicast search unexpectedly includes MX: %q", request)
+	}
+}
+
+func startSSDPTestResponder(
+	t *testing.T,
+	respond func(int, []byte) bool,
+) (*net.UDPAddr, *atomic.Int32, <-chan []byte) {
+	t.Helper()
+	conn, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = conn.Close()
+	})
+
+	requests := &atomic.Int32{}
+	received := make(chan []byte, 8)
+	go func() {
+		buffer := make([]byte, 2048)
+		for {
+			n, sender, err := conn.ReadFromUDP(buffer)
+			if err != nil {
+				return
+			}
+			request := bytes.Clone(buffer[:n])
+			requestNumber := int(requests.Add(1))
+			select {
+			case received <- request:
+			default:
+			}
+			if respond(requestNumber, request) {
+				response := []byte("HTTP/1.1 200 OK\r\n" +
+					"ST: upnp:rootdevice\r\n" +
+					"USN: uuid:test::upnp:rootdevice\r\n\r\n")
+				_, _ = conn.WriteToUDP(response, sender)
+			}
+		}
+	}()
+	return conn.LocalAddr().(*net.UDPAddr), requests, received
+}
 
 func TestParseResponse(t *testing.T) {
 	from := netip.MustParseAddr("192.168.1.20")
