@@ -235,4 +235,17 @@ Cipher                 : CCMP`
 	if NetshNeedsLocation(connected) {
 		t.Fatal("NetshNeedsLocation(connected interface) = true, want false")
 	}
+
+	openSSID := strings.ReplaceAll(`Name                   : Wi-Fi
+State                  : connected
+SSID                   : ms-settings:privacy-location
+BSSID                  : 00:11:22:33:44:55
+Authentication         : Open
+Cipher                 : None`, "\n", "\r\n")
+	if NetshNeedsLocation(openSSID) {
+		t.Fatal("NetshNeedsLocation(open SSID) = true, want false")
+	}
+	if got := ParseNetsh(openSSID); got != Open {
+		t.Fatalf("ParseNetsh(open SSID) = %v, want Open", got)
+	}
 }
