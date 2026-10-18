@@ -692,6 +692,9 @@ func wifiFindings(security wifi.Security, lang string) []report.Finding {
 func renderText(writer io.Writer, result output, lang string) {
 	fmt.Fprintln(writer, i18n.T(lang, "title"))
 	fmt.Fprintln(writer, i18n.T(lang, "score", i18n.T(lang, result.Status), result.Score))
+	if result.Incomplete {
+		fmt.Fprintln(writer, i18n.T(lang, "incomplete_notice"))
+	}
 	newCount := 0
 	for _, device := range result.Devices {
 		if device.New {
