@@ -95,7 +95,8 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 	flags := flag.NewFlagSet("mimamori", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	jsonOutput := flags.Bool("json", false, "write JSON output")
-	language := flags.String("lang", "auto", "output language: auto, en, or ja")
+	languageHelp := fmt.Sprintf("output language: auto or one of %s", strings.Join(i18n.Supported(), ", "))
+	language := flags.String("lang", "auto", languageHelp)
 	statePath := flags.String("state", "", "path to the local device history file")
 	wait := flags.Duration("wait", 3*time.Second, "time to listen for local UPnP devices")
 	showVersion := flags.Bool("version", false, "print version")
@@ -117,10 +118,12 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 		fmt.Fprintf(stdout, "Mimamori %s\n", version)
 		return finish(0)
 	}
-	if *language != "auto" && *language != "en" && *language != "ja" {
-		fmt.Fprintf(stderr, "invalid --lang %q (use auto, en, or ja)\n", *language)
+	resolvedLang, err := resolveLanguage(*language, os.Getenv)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
 		return finish(1)
 	}
+	lang = resolvedLang
 	if *wait < 0 {
 		fmt.Fprintln(stderr, "--wait cannot be negative")
 		return finish(1)
@@ -134,10 +137,6 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 		}
 	}
 
-	lang = *language
-	if lang == "auto" {
-		lang = i18n.Detect(os.Getenv)
-	}
 	ctx := context.Background()
 	arpCh := make(chan discoveryResult, 1)
 	gatewayCh := make(chan gatewayResult, 1)
@@ -293,6 +292,16 @@ func writeOutput(writer io.Writer, result output, jsonMode bool, lang string) er
 		return io.ErrShortWrite
 	}
 	return nil
+}
+
+func resolveLanguage(flagValue string, getenv func(string) string) (string, error) {
+	if flagValue == "auto" {
+		return i18n.Detect(getenv), nil
+	}
+	if lang, ok := i18n.Match(flagValue); ok {
+		return lang, nil
+	}
+	return "", fmt.Errorf("invalid --lang %q (use auto, or one of %s)", flagValue, strings.Join(i18n.Supported(), ", "))
 }
 
 func gatewayString(ip netip.Addr) string {

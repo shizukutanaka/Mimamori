@@ -1,0 +1,33 @@
+package i18n
+
+var catalogDe = map[string]string{
+	"title":             "Mimamori — Sicherheitsprüfung für das Heimnetz",
+	"safe":              "Sicher",
+	"caution":           "Achtung",
+	"danger":            "Gefahr",
+	"score":             "Sicherheit des Heimnetzes: %s  %d Punkte",
+	"device_counts":     "Geräte: %d (%d neu)",
+	"findings_heading":  "Zu lösende Probleme",
+	"devices_heading":   "Geräte",
+	"no_problems":       "Keine Probleme gefunden",
+	"first_run":         "Die Geräte in Ihrem Netzwerk wurden bei diesem Lauf gespeichert. Neue Geräte werden ab dem nächsten Lauf gemeldet.",
+	"new_badge":         "neu",
+	"router":            "Router",
+	"randomized_device": "Smartphone oder PC (private WLAN-Adresse)",
+	"telnet_open":       "Telnet ist auf %s geöffnet. Dieser alte Fernzugriff wird häufig missbraucht, um Geräte zu übernehmen.",
+	"telnet_open_fix":   "Schalten Sie Telnet in den Geräteeinstellungen aus und installieren Sie verfügbare Aktualisierungen. Ändern Sie auch jedes Standardpasswort.",
+	"ftp_open":          "Der Dateizugriff per FTP ist auf %s geöffnet. Dadurch könnten Dateien oder Kontodaten offengelegt werden.",
+	"ftp_open_fix":      "Schalten Sie FTP aus, wenn Sie es nicht benötigen. Falls doch, verwenden Sie eine sichere Alternative und ein eigenes Passwort.",
+	"vnc_open":          "Der Fernzugriff per VNC ist auf %s geöffnet. Wer eine Verbindung herstellen kann, könnte den Bildschirm steuern.",
+	"vnc_open_fix":      "Schalten Sie VNC aus, wenn Sie keinen Fernzugriff benötigen. Andernfalls beschränken Sie Verbindungen und verwenden Sie ein starkes Passwort.",
+	"router_upnp":       "UPnP ist am Router eingeschaltet. Geräte im Haus können dadurch automatisch einen Zugang aus dem Internet öffnen.",
+	"router_upnp_fix":   "Wenn Spielekonsolen und andere Geräte UPnP nicht benötigen, schalten Sie es in den Router-Einstellungen aus.",
+	"new_device":        "Ein neues Gerät hat sich verbunden: %s",
+	"new_device_fix":    "Wenn Sie das Gerät nicht kennen, ändern Sie das WLAN-Passwort und verbinden Sie nur Ihre eigenen Geräte erneut.",
+	"points_recovered":  "(+%d Punkte)",
+	"press_enter":       "Zum Schließen Enter drücken...",
+}
+
+func init() {
+	messages["de"] = catalogDe
+}
