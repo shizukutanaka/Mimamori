@@ -176,6 +176,10 @@ func discoverTargets(
 	}
 	sendMulticast()
 
+	var deadlineMu sync.Mutex
+	unicastOpen := unicast != nil
+	targetReceived := false
+	multicastRetried := false
 	readDeadline := deadline
 	if retryPending {
 		readDeadline = retryAt
@@ -186,12 +190,28 @@ func discoverTargets(
 			_ = conn.SetReadDeadline(time.Now())
 		}
 	}
+	setReadDeadlineForState := func() {
+		deadlineMu.Lock()
+		readDeadline := deadline
+		if unicastOpen && !targetReceived && !time.Now().Before(deadline) {
+			readDeadline = time.Time{}
+		} else if retryPending && !multicastRetried && retryAt.Before(readDeadline) {
+			readDeadline = retryAt
+		}
+		_ = conn.SetReadDeadline(readDeadline)
+		deadlineMu.Unlock()
+		if ctx.Err() != nil {
+			_ = conn.SetReadDeadline(time.Now())
+		}
+	}
 	setReadDeadline(readDeadline)
 	stopCancel := context.AfterFunc(ctx, func() {
 		_ = conn.SetReadDeadline(time.Now())
 	})
 	defer stopCancel()
 
+	workerContext, cancelWorker := context.WithCancel(ctx)
+	defer cancelWorker()
 	var workers sync.WaitGroup
 	workers.Add(1)
 	go func() {
@@ -200,9 +220,23 @@ func discoverTargets(
 			target *net.UDPAddr
 			at     time.Time
 		}, 0)
-		deadlineTimer := time.NewTimer(time.Until(deadline))
-		defer deadlineTimer.Stop()
 		for {
+			deadlineMu.Lock()
+			currentDeadline := deadline
+			waitForTarget := unicastOpen && !targetReceived
+			deadlineMu.Unlock()
+
+			var deadlineTimer *time.Timer
+			var deadlineChannel <-chan time.Time
+			if !waitForTarget {
+				delay := time.Until(currentDeadline)
+				if delay < 0 {
+					delay = 0
+				}
+				deadlineTimer = time.NewTimer(delay)
+				deadlineChannel = deadlineTimer.C
+			}
+
 			var retryTimer *time.Timer
 			var retryChannel <-chan time.Time
 			if len(pending) > 0 {
@@ -210,34 +244,60 @@ func discoverTargets(
 				retryChannel = retryTimer.C
 			}
 			select {
-			case <-ctx.Done():
+			case <-workerContext.Done():
 				if retryTimer != nil {
 					retryTimer.Stop()
 				}
+				if deadlineTimer != nil {
+					deadlineTimer.Stop()
+				}
 				return
-			case <-deadlineTimer.C:
+			case <-deadlineChannel:
 				if retryTimer != nil {
 					retryTimer.Stop()
+				}
+				if deadlineTimer != nil {
+					deadlineTimer.Stop()
 				}
 				return
 			case target, ok := <-unicast:
 				if retryTimer != nil {
 					retryTimer.Stop()
 				}
+				if deadlineTimer != nil {
+					deadlineTimer.Stop()
+				}
 				if !ok {
 					unicast = nil
-					if len(pending) == 0 {
-						return
+					deadlineMu.Lock()
+					unicastOpen = false
+					deadlinePassed := !time.Now().Before(deadline)
+					deadlineMu.Unlock()
+					if deadlinePassed {
+						setReadDeadlineForState()
 					}
 					continue
 				}
-				if target == nil || !time.Now().Before(deadline) {
+				if target == nil || workerContext.Err() != nil {
 					continue
 				}
+				targetAt := time.Now()
+				deadlineMu.Lock()
+				targetReceived = true
+				extendedDeadline := targetAt.Add(wait)
+				if extendedDeadline.After(deadline) {
+					deadline = extendedDeadline
+				}
+				if contextDeadline, ok := ctx.Deadline(); ok && contextDeadline.Before(deadline) {
+					deadline = contextDeadline
+				}
+				currentDeadline = deadline
+				deadlineMu.Unlock()
+				setReadDeadlineForState()
 				send(target, ssdpSearchMessage(target.IP.String()+":1900", false))
 				if resend > 0 {
 					at := time.Now().Add(resend)
-					if at.Before(deadline) {
+					if at.Before(currentDeadline) {
 						pending = append(pending, struct {
 							target *net.UDPAddr
 							at     time.Time
@@ -247,6 +307,9 @@ func discoverTargets(
 			case <-retryChannel:
 				if retryTimer != nil {
 					retryTimer.Stop()
+				}
+				if deadlineTimer != nil {
+					deadlineTimer.Stop()
 				}
 				now := time.Now()
 				due := pending[:0]
@@ -266,24 +329,39 @@ func discoverTargets(
 	responses := make([]Response, 0)
 	seen := make(map[string]struct{})
 	buffer := make([]byte, 2048)
-	retried := false
 	for {
 		n, sender, err := conn.ReadFrom(buffer)
 		if err != nil {
 			var netErr net.Error
 			if errors.As(err, &netErr) && netErr.Timeout() {
-				if retryPending && !retried && ctx.Err() == nil {
-					retried = true
+				deadlineMu.Lock()
+				retryNow := retryPending && !multicastRetried && ctx.Err() == nil
+				if retryNow {
+					multicastRetried = true
+				}
+				deadlineMu.Unlock()
+				if retryNow {
 					sendMulticast()
 					afterRetrySend()
-					setReadDeadline(deadline)
+					setReadDeadlineForState()
 					continue
+				}
+				if ctx.Err() == nil {
+					deadlineMu.Lock()
+					keepWaiting := time.Now().Before(deadline) || (unicastOpen && !targetReceived)
+					deadlineMu.Unlock()
+					if keepWaiting {
+						setReadDeadlineForState()
+						continue
+					}
 				}
 				break
 			}
 			if ctx.Err() != nil {
 				break
 			}
+			cancelWorker()
+			workers.Wait()
 			return nil, fmt.Errorf("read SSDP response: %w", err)
 		}
 		ip, ok := netip.AddrFromSlice(sender.(*net.UDPAddr).IP)

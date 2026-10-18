@@ -146,6 +146,34 @@ func TestDiscoverDelayedUnicast(t *testing.T) {
 	}
 }
 
+func TestDiscoverDelayedUnicastAfterDeadline(t *testing.T) {
+	target, requests, _ := startSSDPTestResponder(t, func(int, []byte) bool { return true })
+	unicast := make(chan *net.UDPAddr, 1)
+	go func() {
+		time.Sleep(80 * time.Millisecond)
+		unicast <- target
+		close(unicast)
+	}()
+
+	responses, err := discoverTargets(
+		context.Background(),
+		50*time.Millisecond,
+		nil,
+		unicast,
+		netip.Addr.IsLoopback,
+		20*time.Millisecond,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(responses) != 1 {
+		t.Fatalf("discoverTargets() returned %d responses, want 1", len(responses))
+	}
+	if requests.Load() == 0 {
+		t.Fatal("no unicast search was sent")
+	}
+}
+
 func TestDiscoverNilUnicast(t *testing.T) {
 	target, _, _ := startSSDPTestResponder(t, func(int, []byte) bool { return true })
 
@@ -165,12 +193,14 @@ func TestDiscoverNilUnicast(t *testing.T) {
 	}
 }
 
-func TestDiscoverNeverClosedUnicastReturnsAtDeadline(t *testing.T) {
+func TestDiscoverClosedUnicastReturnsAtDeadline(t *testing.T) {
+	wait := 80 * time.Millisecond
 	unicast := make(chan *net.UDPAddr)
+	close(unicast)
 	start := time.Now()
 	_, err := discoverTargets(
 		context.Background(),
-		40*time.Millisecond,
+		wait,
 		nil,
 		unicast,
 		netip.Addr.IsLoopback,
@@ -179,8 +209,50 @@ func TestDiscoverNeverClosedUnicastReturnsAtDeadline(t *testing.T) {
 	if err == nil {
 		t.Fatal("discoverTargets() error = nil, want no-send error")
 	}
-	if elapsed := time.Since(start); elapsed > 300*time.Millisecond {
-		t.Fatalf("discoverTargets() took %s, want return near deadline", elapsed)
+	if elapsed := time.Since(start); elapsed < wait-10*time.Millisecond || elapsed > wait+500*time.Millisecond {
+		t.Fatalf("discoverTargets() took %s, want return near %s", elapsed, wait)
+	}
+}
+
+func TestDiscoverNeverClosedUnicastReturnsOnCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	unicast := make(chan *net.UDPAddr)
+	returned := make(chan error, 1)
+	started := make(chan struct{})
+	go func() {
+		close(started)
+		_, err := discoverTargets(
+			ctx,
+			40*time.Millisecond,
+			nil,
+			unicast,
+			netip.Addr.IsLoopback,
+			20*time.Millisecond,
+		)
+		returned <- err
+	}()
+	<-started
+
+	time.Sleep(80 * time.Millisecond)
+	select {
+	case err := <-returned:
+		t.Fatalf("discoverTargets() returned before cancellation: %v", err)
+	default:
+	}
+
+	cancelledAt := time.Now()
+	cancel()
+	select {
+	case err := <-returned:
+		if time.Since(cancelledAt) > 500*time.Millisecond {
+			t.Fatal("discoverTargets() returned too slowly after cancellation")
+		}
+		if err == nil {
+			t.Fatal("discoverTargets() error = nil, want no-send error")
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("discoverTargets() did not return after cancellation")
 	}
 }
 
