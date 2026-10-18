@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strconv"
 	"testing"
@@ -45,6 +46,42 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	}
 	if runtime.GOOS != "windows" && info.Mode().Perm() != 0600 {
 		t.Fatalf("file mode = %o, want 600", info.Mode().Perm())
+	}
+}
+
+func TestSaveSyncsParentsOfCreatedDirectories(t *testing.T) {
+	root := t.TempDir()
+	directory := filepath.Join(root, "a", "b", "c")
+	path := filepath.Join(directory, "history.json")
+
+	previousSyncDir := syncDirFunc
+	var synced []string
+	syncDirFunc = func(path string) {
+		synced = append(synced, path)
+	}
+	t.Cleanup(func() { syncDirFunc = previousSyncDir })
+
+	store := emptyStore()
+	if err := Save(path, store); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		filepath.Join(root, "a", "b"),
+		filepath.Join(root, "a"),
+		root,
+		directory,
+	}
+	if !reflect.DeepEqual(synced, want) {
+		t.Fatalf("first Save() synced %v, want %v", synced, want)
+	}
+
+	synced = nil
+	if err := Save(path, store); err != nil {
+		t.Fatal(err)
+	}
+	want = []string{directory}
+	if !reflect.DeepEqual(synced, want) {
+		t.Fatalf("second Save() synced %v, want %v", synced, want)
 	}
 }
 
