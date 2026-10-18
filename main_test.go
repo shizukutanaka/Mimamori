@@ -17,6 +17,7 @@ import (
 	"github.com/shizukutanaka/Mimamori/internal/probe"
 	"github.com/shizukutanaka/Mimamori/internal/report"
 	"github.com/shizukutanaka/Mimamori/internal/ssdp"
+	"github.com/shizukutanaka/Mimamori/internal/wifi"
 )
 
 func TestMakeFindings(t *testing.T) {
@@ -517,5 +518,44 @@ func TestFindingsCatalogHitForAllSupportedLanguages(t *testing.T) {
 				t.Errorf("%s finding fell back to a catalog key: %#v", lang, finding)
 			}
 		}
+	}
+}
+
+func TestWiFiFindings(t *testing.T) {
+	tests := []struct {
+		name     string
+		security wifi.Security
+		id       string
+		level    report.Level
+		points   int
+	}{
+		{name: "open", security: wifi.Open, id: "wifi_open", level: report.Danger, points: 25},
+		{name: "WEP", security: wifi.WEP, id: "wifi_wep", level: report.Danger, points: 25},
+		{name: "WPA1 or TKIP", security: wifi.WPA1orTKIP, id: "wifi_weak", level: report.Caution, points: 8},
+		{name: "unknown", security: wifi.Unknown},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			findings := wifiFindings(test.security, "en")
+			if test.id == "" {
+				if len(findings) != 0 {
+					t.Fatalf("wifiFindings() = %#v, want no finding", findings)
+				}
+				return
+			}
+			if len(findings) != 1 {
+				t.Fatalf("wifiFindings() returned %d findings, want 1", len(findings))
+			}
+			finding := findings[0]
+			if finding.ID != test.id || finding.Level != test.level || finding.Points != test.points {
+				t.Fatalf("wifi finding = %#v, want %s/%s/%d", finding, test.id, test.level, test.points)
+			}
+			if finding.IP != "" || finding.Device != "" {
+				t.Errorf("Wi-Fi finding includes a device address/name: %#v", finding)
+			}
+			if finding.Message == "" || finding.Fix == "" || finding.Message == finding.ID || finding.Fix == finding.ID+"_fix" {
+				t.Errorf("Wi-Fi finding is missing localized text: %#v", finding)
+			}
+		})
 	}
 }
