@@ -190,13 +190,21 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 		fmt.Fprintf(stderr, "warning: cannot read a device description: %v\n", err)
 	}
 	incomplete := arp.err != nil || gateway.err != nil || discovery.err != nil || len(descriptionErrors) > 0
+	wifiFs := wifiFindings(wifiCheck.security, lang)
 	if incomplete && !*jsonOutput {
 		fmt.Fprintln(stderr, "warning: some checks could not run; this result may be incomplete")
 	}
 
 	hosts := collectHosts(arp.neighbors, gatewayIP, discovery.responses)
 	opened := probe.Scan(ctx, hosts, []int{23, 2323, 21, 5900}, 700*time.Millisecond, 64)
-	if !scanObservedNetwork(arp.neighbors, discovery.responses, opened) {
+	canReport, forceIncomplete := reportable(scanObservedNetwork(arp.neighbors, discovery.responses, opened), wifiFs)
+	if forceIncomplete {
+		if !incomplete && !*jsonOutput {
+			fmt.Fprintln(stderr, "warning: some checks could not run; this result may be incomplete")
+		}
+		incomplete = true
+	}
+	if !canReport {
 		fmt.Fprintln(stderr, "error: the scan could not see any device on your network; the result would not be reliable")
 		return finish(1)
 	}
@@ -249,7 +257,7 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 	}
 
 	findings := makeFindings(opened, discovery.responses, gatewayIP, descriptions, deviceNames, newDevices, lang)
-	findings = append(findings, wifiFindings(wifiCheck.security, lang)...)
+	findings = append(findings, wifiFs...)
 	report.Sort(findings)
 	status := report.Status(report.Score(findings), findings)
 	result := output{
@@ -281,6 +289,16 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 
 func scanObservedNetwork(neighbors []lan.Neighbor, responses []ssdp.Response, opened []probe.Open) bool {
 	return len(neighbors) > 0 || len(responses) > 0 || len(opened) > 0
+}
+
+func reportable(observed bool, wifiFindings []report.Finding) (bool, bool) {
+	if observed {
+		return true, false
+	}
+	if len(wifiFindings) > 0 {
+		return true, true
+	}
+	return false, false
 }
 
 func shouldSaveHistory(outputSucceeded, firstRun bool, store baseline.Store, loadState historyLoadState) bool {
