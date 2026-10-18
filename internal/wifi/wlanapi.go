@@ -68,6 +68,16 @@ const (
 	dot11CipherAlgorithmWEP         uint32 = 0x101
 )
 
+func reduceWLAN(best Security, failed bool) (Security, bool) {
+	if best != Unknown {
+		return best, true
+	}
+	if failed {
+		return Unknown, false
+	}
+	return Unknown, true
+}
+
 func wlanSecurity(auth, cipher uint32) Security {
 	switch {
 	case auth == dot11AuthAlgorithmSharedKey ||

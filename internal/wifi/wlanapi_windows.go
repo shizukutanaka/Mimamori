@@ -53,6 +53,7 @@ func currentWLAN() (Security, bool, error) {
 
 	interfaces := unsafe.Slice(&list.InterfaceInfo[0], int(list.NumberOfItems))
 	best := Unknown
+	failed := false
 	for i := range interfaces {
 		iface := &interfaces[i]
 		if iface.State != wlanInterfaceStateConnected {
@@ -77,7 +78,8 @@ func currentWLAN() (Security, bool, error) {
 			return Unknown, true, ErrLocationPermission
 		}
 		if result != 0 {
-			return Unknown, false, nil
+			failed = true
+			continue
 		}
 		if data == nil || uintptr(size) < unsafe.Sizeof(wlanConnectionAttributes{}) ||
 			data.State != wlanInterfaceStateConnected {
@@ -89,5 +91,6 @@ func currentWLAN() (Security, bool, error) {
 			best = candidate
 		}
 	}
-	return best, true, nil
+	best, handled := reduceWLAN(best, failed)
+	return best, handled, nil
 }

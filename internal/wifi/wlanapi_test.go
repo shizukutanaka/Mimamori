@@ -41,6 +41,30 @@ func TestWLANSecurity(t *testing.T) {
 	}
 }
 
+func TestReduceWLAN(t *testing.T) {
+	tests := []struct {
+		name        string
+		best        Security
+		failed      bool
+		want        Security
+		wantHandled bool
+	}{
+		{name: "known result without failure", best: Modern, want: Modern, wantHandled: true},
+		{name: "known result despite failure", best: Open, failed: true, want: Open, wantHandled: true},
+		{name: "unknown without failure", want: Unknown, wantHandled: true},
+		{name: "unknown with failure", failed: true, want: Unknown, wantHandled: false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, handled := reduceWLAN(test.best, test.failed)
+			if got != test.want || handled != test.wantHandled {
+				t.Fatalf("reduceWLAN(%v, %t) = (%v, %t), want (%v, %t)",
+					test.best, test.failed, got, handled, test.want, test.wantHandled)
+			}
+		})
+	}
+}
+
 func TestWLANAPILayout(t *testing.T) {
 	tests := []struct {
 		name string
