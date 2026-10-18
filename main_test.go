@@ -407,6 +407,35 @@ func TestRunPauseMode(t *testing.T) {
 	}
 }
 
+func TestPrintScanningNotice(t *testing.T) {
+	const notice = "家のネットワークを確認しています。少し時間がかかります…"
+	var textOutput bytes.Buffer
+	printScanningNotice(&textOutput, "ja", false)
+	if got, want := textOutput.String(), notice+"\n"; got != want {
+		t.Fatalf("text scanning notice = %q, want %q", got, want)
+	}
+
+	var jsonOutput bytes.Buffer
+	printScanningNotice(&jsonOutput, "ja", true)
+	if jsonOutput.Len() != 0 {
+		t.Fatalf("JSON scanning notice = %q, want empty", jsonOutput.String())
+	}
+}
+
+func TestRunVersionOutputUnchanged(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	result := run([]string{"--version"}, &stdout, &stderr)
+	if result.code != 0 {
+		t.Fatalf("run(--version) code = %d, want 0", result.code)
+	}
+	if got, want := stdout.String(), "Mimamori "+version+"\n"; got != want {
+		t.Fatalf("run(--version) stdout = %q, want %q", got, want)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("run(--version) stderr = %q, want empty", stderr.String())
+	}
+}
+
 func TestCollectHostsFiltersAndCaps(t *testing.T) {
 	neighbors := make([]lan.Neighbor, 1025)
 	for i := range neighbors {

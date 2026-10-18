@@ -143,6 +143,8 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 		}
 	}
 
+	printScanningNotice(stderr, lang, *jsonOutput)
+
 	ctx := context.Background()
 	arpCh := make(chan discoveryResult, 1)
 	gatewayCh := make(chan gatewayResult, 1)
@@ -300,6 +302,12 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 		}
 	}
 	return finish(0)
+}
+
+func printScanningNotice(writer io.Writer, lang string, jsonOutput bool) {
+	if !jsonOutput {
+		fmt.Fprintln(writer, i18n.T(lang, "scanning_notice"))
+	}
 }
 
 func scanObservedNetwork(neighbors []lan.Neighbor, responses []ssdp.Response, opened []probe.Open) bool {
