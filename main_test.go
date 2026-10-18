@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/netip"
@@ -39,7 +40,7 @@ func TestMakeFindings(t *testing.T) {
 				ip,
 				map[netip.Addr]ssdp.Description{},
 				map[netip.Addr]string{ip: "Router", newIP: "Camera"},
-				map[netip.Addr]bool{newIP: true},
+				map[netip.Addr]string{newIP: "new_device"},
 				nil,
 				lang,
 			)
@@ -75,7 +76,7 @@ func TestADBOpenFinding(t *testing.T) {
 		netip.Addr{},
 		map[netip.Addr]ssdp.Description{},
 		map[netip.Addr]string{ip: deviceName},
-		map[netip.Addr]bool{},
+		map[netip.Addr]string{},
 		nil,
 		"en",
 	)
@@ -91,6 +92,82 @@ func TestADBOpenFinding(t *testing.T) {
 	}
 	if finding.Message != i18n.T("en", "adb_open", deviceName) || finding.Fix != i18n.T("en", "adb_open_fix") {
 		t.Fatalf("ADB finding text = %#v, want localized message and fix", finding)
+	}
+}
+
+func TestNewDeviceFindingClassification(t *testing.T) {
+	ip := netip.MustParseAddr("192.168.1.11")
+	deviceName := "My phone"
+	tests := []struct {
+		name       string
+		firstRun   bool
+		isNew      bool
+		mac        string
+		wantID     string
+		wantLevel  report.Level
+		wantPoints int
+	}{
+		{
+			name: "randomized new device", isNew: true, mac: "02:00:00:00:00:01",
+			wantID: "new_device_private", wantLevel: report.Caution, wantPoints: 3,
+		},
+		{
+			name: "universal new device", isNew: true, mac: "00:11:22:33:44:55",
+			wantID: "new_device", wantLevel: report.Caution, wantPoints: 3,
+		},
+		{
+			name: "first run", firstRun: true, isNew: true, mac: "02:00:00:00:00:01",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			findingID := newDeviceFindingID(test.firstRun, test.isNew, test.mac)
+			if findingID != test.wantID {
+				t.Fatalf("newDeviceFindingID() = %q, want %q", findingID, test.wantID)
+			}
+			newDeviceFindings := map[netip.Addr]string{}
+			if findingID != "" {
+				newDeviceFindings[ip] = findingID
+			}
+			for _, lang := range []string{"en", "ja"} {
+				findings := makeFindings(
+					nil, nil, netip.Addr{}, map[netip.Addr]ssdp.Description{},
+					map[netip.Addr]string{ip: deviceName}, newDeviceFindings, nil, lang,
+				)
+				if test.wantID == "" {
+					if len(findings) != 0 {
+						t.Fatalf("first-run findings = %#v, want none", findings)
+					}
+					continue
+				}
+				if len(findings) != 1 {
+					t.Fatalf("findings = %#v, want one", findings)
+				}
+				finding := findings[0]
+				if finding.ID != test.wantID || finding.Level != test.wantLevel || finding.Points != test.wantPoints {
+					t.Fatalf("finding = %#v, want %s/%s/%d", finding, test.wantID, test.wantLevel, test.wantPoints)
+				}
+				if got := report.Score(findings); got != 97 {
+					t.Errorf("score = %d, want 97", got)
+				}
+				if got := report.Status(report.Score(findings), findings); got != "caution" {
+					t.Errorf("status = %q, want caution", got)
+				}
+				if test.wantID == "new_device_private" {
+					wantMessages := map[string]string{
+						"en": "A device using a private (changing) address connected: My phone. Phones and PCs change this address over time, so it may be one of your own devices.",
+						"ja": "プライベートアドレス（変化するアドレス）を使う機器が接続しました: My phone。スマホや PC はこのアドレスを定期的に変えるため、ご家族の機器の可能性があります。",
+					}
+					wantFixes := map[string]string{
+						"en": "Check whether everyone's phones/PCs are accounted for. If you see devices you don't recognize repeatedly, change the Wi-Fi password and reconnect only your own devices.",
+						"ja": "家族のスマホや PC か確認してください。心当たりのない機器が繰り返し出る場合は、Wi-Fi のパスワードを変更し、自分の機器だけ再接続してください。",
+					}
+					if finding.Message != wantMessages[lang] || finding.Fix != wantFixes[lang] {
+						t.Errorf("%s private finding text = (%q, %q), want (%q, %q)", lang, finding.Message, finding.Fix, wantMessages[lang], wantFixes[lang])
+					}
+				}
+			}
+		})
 	}
 }
 
@@ -146,6 +223,54 @@ func TestPortForwardFindings(t *testing.T) {
 			}},
 			names:  map[netip.Addr]string{internalIP: "Android TV"},
 			wantID: "port_forward_risky", wantLevel: report.Danger, wantCount: 1, wantPort: 5555, wantName: "Android TV",
+		},
+		{
+			name: "unrestricted TCP RTSP port is camera danger",
+			mappings: []ssdp.PortMapping{{
+				ExternalPort: 554, Protocol: "TCP", InternalPort: 554, InternalClient: internalIP.String(), Enabled: true,
+			}},
+			names:  map[netip.Addr]string{internalIP: "Living room camera"},
+			wantID: "forward_camera", wantLevel: report.Danger, wantCount: 1, wantPort: 554, wantName: "Living room camera",
+		},
+		{
+			name: "unrestricted TCP Dahua DVR port is camera danger",
+			mappings: []ssdp.PortMapping{{
+				ExternalPort: 37777, Protocol: "TCP", InternalPort: 37777, InternalClient: internalIP.String(), Enabled: true,
+			}},
+			names:  map[netip.Addr]string{internalIP: "DVR"},
+			wantID: "forward_camera", wantLevel: report.Danger, wantCount: 1, wantPort: 37777, wantName: "DVR",
+		},
+		{
+			name: "unrestricted TCP Xiongmai DVR port is camera danger",
+			mappings: []ssdp.PortMapping{{
+				ExternalPort: 34567, Protocol: "TCP", InternalPort: 34567, InternalClient: internalIP.String(), Enabled: true,
+			}},
+			names:  map[netip.Addr]string{internalIP: "DVR"},
+			wantID: "forward_camera", wantLevel: report.Danger, wantCount: 1, wantPort: 34567, wantName: "DVR",
+		},
+		{
+			name: "UDP RTSP port is not risky",
+			mappings: []ssdp.PortMapping{{
+				ExternalPort: 554, Protocol: "UDP", InternalPort: 554, InternalClient: internalIP.String(), Enabled: true,
+			}},
+			names:  map[netip.Addr]string{internalIP: "Camera"},
+			wantID: "port_forward", wantLevel: report.Caution, wantCount: 1, wantPort: 554, wantName: "Camera",
+		},
+		{
+			name: "restricted Dahua port is not risky",
+			mappings: []ssdp.PortMapping{{
+				ExternalPort: 37777, Protocol: "TCP", RemoteHost: "203.0.113.8", InternalPort: 37777, InternalClient: internalIP.String(), Enabled: true,
+			}},
+			names:  map[netip.Addr]string{internalIP: "DVR"},
+			wantID: "port_forward", wantLevel: report.Caution, wantCount: 1, wantPort: 37777, wantName: "DVR",
+		},
+		{
+			name: "TCP 8000 is not risky",
+			mappings: []ssdp.PortMapping{{
+				ExternalPort: 8000, Protocol: "TCP", InternalPort: 8000, InternalClient: internalIP.String(), Enabled: true,
+			}},
+			names:  map[netip.Addr]string{internalIP: "Camera"},
+			wantID: "port_forward", wantLevel: report.Caution, wantCount: 1, wantPort: 8000, wantName: "Camera",
 		},
 		{
 			name: "ordinary forward",
@@ -214,11 +339,11 @@ func TestPortForwardFindings(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			findings := makeFindings(
 				nil, nil, netip.Addr{}, map[netip.Addr]ssdp.Description{},
-				test.names, map[netip.Addr]bool{}, test.mappings, "en",
+				test.names, map[netip.Addr]string{}, test.mappings, "en",
 			)
 			portFindings := make([]report.Finding, 0)
 			for _, finding := range findings {
-				if finding.ID == "port_forward" || finding.ID == "port_forward_risky" {
+				if finding.ID == "port_forward" || finding.ID == "port_forward_risky" || finding.ID == "forward_camera" {
 					portFindings = append(portFindings, finding)
 				}
 			}
@@ -236,6 +361,13 @@ func TestPortForwardFindings(t *testing.T) {
 				}
 				if finding.Points != wantPoints || finding.IP != internalIP.String() {
 					t.Fatalf("port forwarding finding = %#v", finding)
+				}
+				if finding.ID == "forward_camera" {
+					wantMessage := i18n.T("en", "forward_camera", test.wantName, test.wantPort)
+					wantFix := i18n.T("en", "forward_camera_fix")
+					if finding.Message != wantMessage || finding.Fix != wantFix {
+						t.Fatalf("camera forward text = %#v, want message %q and fix %q", finding, wantMessage, wantFix)
+					}
 				}
 			}
 		})
@@ -261,20 +393,20 @@ func TestFetchPortMappingsQueryability(t *testing.T) {
 	}
 
 	t.Run("no description", func(t *testing.T) {
-		mappings, err := fetchPortMappings(context.Background(), nil, gateway, nil, nil)
-		if err != nil || mappings != nil {
-			t.Fatalf("fetchPortMappings() = %#v, %v; want nil, nil", mappings, err)
+		mappings, queried, err := fetchPortMappings(context.Background(), nil, gateway, nil, nil)
+		if err != nil || mappings != nil || queried {
+			t.Fatalf("fetchPortMappings() = %#v, %t, %v; want nil, false, nil", mappings, queried, err)
 		}
 	})
 
 	t.Run("non-IGD description without IGD responder", func(t *testing.T) {
 		description := routerDescription("")
 		description.Device.DeviceType = "urn:schemas-upnp-org:device:Basic:1"
-		mappings, err := fetchPortMappings(context.Background(), nil, gateway, nil, map[netip.Addr]ssdp.Description{
+		mappings, queried, err := fetchPortMappings(context.Background(), nil, gateway, nil, map[netip.Addr]ssdp.Description{
 			gateway: description,
 		})
-		if err != nil || mappings != nil {
-			t.Fatalf("fetchPortMappings() = %#v, %v; want nil, nil", mappings, err)
+		if err != nil || mappings != nil || queried {
+			t.Fatalf("fetchPortMappings() = %#v, %t, %v; want nil, false, nil", mappings, queried, err)
 		}
 	})
 
@@ -292,19 +424,19 @@ func TestFetchPortMappingsQueryability(t *testing.T) {
 			},
 			Location: "http://192.168.1.1:1900/description.xml",
 		}
-		_, err := fetchPortMappings(context.Background(), nil, gateway, nil, map[netip.Addr]ssdp.Description{
+		_, queried, err := fetchPortMappings(context.Background(), nil, gateway, nil, map[netip.Addr]ssdp.Description{
 			gateway: description,
 		})
-		if err == nil || err.Error() != "router advertises UPnP but its port forwarding list cannot be queried" {
+		if queried || err == nil || err.Error() != "router advertises UPnP but its port forwarding list cannot be queried" {
 			t.Fatalf("fetchPortMappings() error = %v; want rejected control URL error", err)
 		}
 	})
 
 	t.Run("IGD without WAN service", func(t *testing.T) {
-		_, err := fetchPortMappings(context.Background(), nil, gateway, nil, map[netip.Addr]ssdp.Description{
+		_, queried, err := fetchPortMappings(context.Background(), nil, gateway, nil, map[netip.Addr]ssdp.Description{
 			gateway: routerDescription(""),
 		})
-		if err == nil || err.Error() != "router advertises UPnP but its port forwarding list cannot be queried" {
+		if queried || err == nil || err.Error() != "router advertises UPnP but its port forwarding list cannot be queried" {
 			t.Fatalf("fetchPortMappings() error = %v", err)
 		}
 	})
@@ -324,10 +456,10 @@ func TestFetchPortMappingsQueryability(t *testing.T) {
 					Request:    request,
 				}, nil
 			})}
-			_, err := fetchPortMappings(context.Background(), client, gateway, nil, map[netip.Addr]ssdp.Description{
+			_, queried, err := fetchPortMappings(context.Background(), client, gateway, nil, map[netip.Addr]ssdp.Description{
 				gateway: routerDescription(controlURL),
 			})
-			if err == nil || err.Error() != "router advertises UPnP but its port forwarding list cannot be queried" {
+			if queried || err == nil || err.Error() != "router advertises UPnP but its port forwarding list cannot be queried" {
 				t.Fatalf("fetchPortMappings() error = %v", err)
 			}
 			if requests != 0 {
@@ -335,6 +467,28 @@ func TestFetchPortMappingsQueryability(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("successful default gateway query", func(t *testing.T) {
+		requests := 0
+		client := &http.Client{Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
+			requests++
+			return &http.Response{
+				StatusCode: http.StatusInternalServerError,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader(`<UPnPError><errorCode>713</errorCode></UPnPError>`)),
+				Request:    request,
+			}, nil
+		})}
+		mappings, queried, err := fetchPortMappings(context.Background(), client, gateway, nil, map[netip.Addr]ssdp.Description{
+			gateway: routerDescription("/control"),
+		})
+		if err != nil || !queried || len(mappings) != 0 {
+			t.Fatalf("fetchPortMappings() = %#v, %t, %v; want empty mappings, true, nil", mappings, queried, err)
+		}
+		if requests != 1 {
+			t.Fatalf("HTTP requests = %d, want 1", requests)
+		}
+	})
 }
 
 type roundTripperFunc func(*http.Request) (*http.Response, error)
@@ -366,7 +520,7 @@ func TestRouterUPnPAttribution(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			findings := makeFindings(nil, test.responses, test.gateway, test.descriptions, map[netip.Addr]string{}, map[netip.Addr]bool{}, nil, "en")
+			findings := makeFindings(nil, test.responses, test.gateway, test.descriptions, map[netip.Addr]string{}, map[netip.Addr]string{}, nil, "en")
 			count := 0
 			for _, finding := range findings {
 				if finding.ID == "router_upnp" {
@@ -754,6 +908,53 @@ func TestWriteOutputFailurePreventsHistorySave(t *testing.T) {
 	}
 }
 
+func TestRunIncompleteWarningRouting(t *testing.T) {
+	t.Run("text output uses localized notice only", func(t *testing.T) {
+		var stdout, stderr bytes.Buffer
+		if err := writeOutput(&stdout, output{Score: 100, Status: "safe", Incomplete: true}, false, "ja"); err != nil {
+			t.Fatal(err)
+		}
+		finishRun(&stderr, 0, "ja", false, true, true)
+		if !strings.Contains(stdout.String(), i18n.T("ja", "incomplete_notice")) {
+			t.Fatalf("text output = %q, missing localized incomplete notice", stdout.String())
+		}
+		if strings.Contains(stderr.String(), "warning: some checks could not run; this result may be incomplete") {
+			t.Fatalf("text stderr = %q, unexpectedly includes generic incomplete warning", stderr.String())
+		}
+	})
+
+	t.Run("JSON output retains generic warning", func(t *testing.T) {
+		var stdout, stderr bytes.Buffer
+		if err := writeOutput(&stdout, output{Incomplete: true}, true, "en"); err != nil {
+			t.Fatal(err)
+		}
+		finishRun(&stderr, 0, "en", true, true, false)
+		if !strings.Contains(stderr.String(), "warning: some checks could not run; this result may be incomplete") {
+			t.Fatalf("JSON stderr = %q, missing generic incomplete warning", stderr.String())
+		}
+	})
+
+	t.Run("early exit retains generic warning", func(t *testing.T) {
+		var stderr bytes.Buffer
+		finishRun(&stderr, 1, "ja", false, true, false)
+		if !strings.Contains(stderr.String(), "warning: some checks could not run; this result may be incomplete") {
+			t.Fatalf("early-exit stderr = %q, missing generic incomplete warning", stderr.String())
+		}
+	})
+}
+
+func TestRunOutputFailureRetainsIncompleteWarning(t *testing.T) {
+	var stderr bytes.Buffer
+	err := writeOutput(failingOutputWriter{}, output{Incomplete: true}, false, "ja")
+	if err == nil {
+		t.Fatal("writeOutput() succeeded with a failing writer")
+	}
+	finishRun(&stderr, 1, "ja", false, true, false)
+	if !strings.Contains(stderr.String(), "warning: some checks could not run; this result may be incomplete") {
+		t.Fatalf("failed-output stderr = %q, missing generic incomplete warning", stderr.String())
+	}
+}
+
 func TestWriteOutputIncludesIncompleteJSON(t *testing.T) {
 	var buffer bytes.Buffer
 	if err := writeOutput(&buffer, output{Incomplete: true}, true, "en"); err != nil {
@@ -768,8 +969,80 @@ func TestWriteOutputIncludesIncompleteJSON(t *testing.T) {
 	}
 }
 
+func TestRenderTextCheckedLine(t *testing.T) {
+	tests := []struct {
+		name   string
+		lang   string
+		result output
+		want   string
+	}{
+		{
+			name: "all checks",
+			lang: "en",
+			result: output{
+				Score: 100, Status: "safe", Devices: make([]deviceOutput, 12),
+				Checks: checkedSummary{PortForwards: true, WiFi: true},
+			},
+			want: "Checked: 12 devices · risky ports · router port forwards · Wi-Fi encryption",
+		},
+		{
+			name: "devices and risky ports only",
+			lang: "en",
+			result: output{
+				Score: 100, Status: "safe", Devices: []deviceOutput{{}},
+			},
+			want: "Checked: 1 device · risky ports",
+		},
+		{
+			name: "Japanese",
+			lang: "ja",
+			result: output{
+				Score: 100, Status: "safe", Devices: make([]deviceOutput, 12),
+				Checks: checkedSummary{PortForwards: true, WiFi: true},
+			},
+			want: "確認したこと: 機器 12台・危険なポート・ルーターのポート転送・Wi-Fi の暗号化",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var buffer bytes.Buffer
+			renderText(&buffer, test.result, test.lang)
+			lines := strings.Split(strings.TrimSuffix(buffer.String(), "\n"), "\n")
+			if len(lines) < 3 {
+				t.Fatalf("renderText() output has too few lines: %q", buffer.String())
+			}
+			if lines[2] != test.want {
+				t.Fatalf("checked line = %q, want %q", lines[2], test.want)
+			}
+		})
+	}
+}
+
+func TestWriteOutputOmitsCheckedLineFromJSON(t *testing.T) {
+	var buffer bytes.Buffer
+	result := output{
+		Checks:  checkedSummary{PortForwards: true, WiFi: true},
+		Devices: []deviceOutput{{}},
+	}
+	if err := writeOutput(&buffer, result, true, "en"); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(buffer.String(), "Checked:") {
+		t.Fatalf("JSON output contains the human checked line: %s", buffer.String())
+	}
+	var encoded map[string]any
+	if err := json.Unmarshal(buffer.Bytes(), &encoded); err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := encoded["checks"]; exists {
+		t.Fatal("JSON output includes the rendering-only checks field")
+	}
+}
+
 func TestRenderTextShowsLocalizedIncompleteNotice(t *testing.T) {
 	scoreLine := i18n.T("ja", "score", i18n.T("ja", "safe"), 100)
+	checkedLine := i18n.T("ja", "checked_devices", i18n.CheckedDeviceCount("ja", 0)) +
+		i18n.T("ja", "checked_sep") + i18n.T("ja", "checked_ports")
 	notice := i18n.T("ja", "incomplete_notice")
 	for _, test := range []struct {
 		name       string
@@ -788,9 +1061,15 @@ func TestRenderTextShowsLocalizedIncompleteNotice(t *testing.T) {
 			if lines[1] != scoreLine {
 				t.Fatalf("score line = %q, want %q", lines[1], scoreLine)
 			}
+			if lines[2] != checkedLine {
+				t.Fatalf("line after score = %q, want checked summary %q", lines[2], checkedLine)
+			}
 			if test.incomplete {
-				if lines[2] != notice {
-					t.Fatalf("line after score = %q, want notice %q", lines[2], notice)
+				if len(lines) < 4 {
+					t.Fatalf("renderText() output has too few lines: %q", buffer.String())
+				}
+				if lines[3] != notice {
+					t.Fatalf("line after checked summary = %q, want notice %q", lines[3], notice)
 				}
 				return
 			}
@@ -812,7 +1091,7 @@ func TestFindingsCatalogHitForAllSupportedLanguages(t *testing.T) {
 			netip.Addr{},
 			map[netip.Addr]ssdp.Description{},
 			map[netip.Addr]string{ip: "Router"},
-			map[netip.Addr]bool{},
+			map[netip.Addr]string{},
 			[]ssdp.PortMapping{{
 				ExternalPort: 44338, InternalPort: 3389, InternalClient: ip.String(), Enabled: true,
 			}},
@@ -867,6 +1146,8 @@ func TestWiFiFindings(t *testing.T) {
 
 func TestWiFiLocationRequiredTextAndJSON(t *testing.T) {
 	scoreLine := i18n.T("ja", "score", i18n.T("ja", "safe"), 100)
+	checkedLine := i18n.T("ja", "checked_devices", i18n.CheckedDeviceCount("ja", 0)) +
+		i18n.T("ja", "checked_sep") + i18n.T("ja", "checked_ports")
 	incompleteNotice := i18n.T("ja", "incomplete_notice")
 	locationNotice := i18n.T("ja", "wifi_location_notice")
 
@@ -875,11 +1156,11 @@ func TestWiFiLocationRequiredTextAndJSON(t *testing.T) {
 		Score: 100, Status: "safe", Incomplete: true, WiFiLocationRequired: true,
 	}, "ja")
 	lines := strings.Split(strings.TrimSuffix(textOutput.String(), "\n"), "\n")
-	if len(lines) < 4 {
+	if len(lines) < 5 {
 		t.Fatalf("renderText() output has too few lines: %q", textOutput.String())
 	}
-	if lines[1] != scoreLine || lines[2] != incompleteNotice || lines[3] != locationNotice {
-		t.Fatalf("notice order = %q, %q, %q; want score, incomplete notice, location notice", lines[1], lines[2], lines[3])
+	if lines[1] != scoreLine || lines[2] != checkedLine || lines[3] != incompleteNotice || lines[4] != locationNotice {
+		t.Fatalf("notice order = %q, %q, %q, %q; want score, checked summary, incomplete notice, location notice", lines[1], lines[2], lines[3], lines[4])
 	}
 
 	var noLocationNotice bytes.Buffer
@@ -913,6 +1194,34 @@ func TestWiFiLocationRequiredTextAndJSON(t *testing.T) {
 			}
 			if test.present && value != true {
 				t.Fatalf("JSON wifi_location_required = %#v, want true", value)
+			}
+		})
+	}
+}
+
+func TestPrintNoDeviceError(t *testing.T) {
+	const errorLine = "error: the scan could not see any device on your network; the result would not be reliable"
+	locationNotice := i18n.T("ja", "wifi_location_notice")
+	tests := []struct {
+		name       string
+		wifiErr    error
+		wantNotice bool
+	}{
+		{name: "location permission", wifiErr: wifi.ErrLocationPermission, wantNotice: true},
+		{name: "wrapped location permission", wifiErr: fmt.Errorf("x: %w", wifi.ErrLocationPermission), wantNotice: true},
+		{name: "nil error"},
+		{name: "other error", wifiErr: context.Canceled},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var output bytes.Buffer
+			printNoDeviceError(&output, "ja", test.wifiErr)
+			want := errorLine + "\n"
+			if test.wantNotice {
+				want += locationNotice + "\n"
+			}
+			if got := output.String(); got != want {
+				t.Fatalf("printNoDeviceError() = %q, want %q", got, want)
 			}
 		})
 	}

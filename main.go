@@ -44,9 +44,15 @@ type output struct {
 	FirstRun             bool             `json:"first_run"`
 	Incomplete           bool             `json:"incomplete"`
 	WiFiLocationRequired bool             `json:"wifi_location_required,omitempty"`
+	Checks               checkedSummary   `json:"-"`
 	Gateway              string           `json:"gateway"`
 	Devices              []deviceOutput   `json:"devices"`
 	Findings             []report.Finding `json:"findings"`
+}
+
+type checkedSummary struct {
+	PortForwards bool
+	WiFi         bool
 }
 
 type historyLoadState uint8
@@ -108,8 +114,10 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 	wait := flags.Duration("wait", 3*time.Second, "time to listen for local UPnP devices")
 	showVersion := flags.Bool("version", false, "print version")
 	lang := ""
+	incomplete := false
+	localizedNoticeShown := false
 	finish := func(code int) runResult {
-		return runResult{code: code, lang: lang, pause: !*jsonOutput}
+		return finishRun(stderr, code, lang, *jsonOutput, incomplete, localizedNoticeShown)
 	}
 	if err := flags.Parse(args); err != nil {
 		if err == flag.ErrHelp {
@@ -158,9 +166,12 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 	go func() {
 		gateway, err := lan.DefaultGateway(ctx)
 		gatewayCh <- gatewayResult{gateway: gateway, err: err}
-	}()
-	go func() {
-		responses, err := ssdp.Discover(ctx, *wait)
+		var responses []ssdp.Response
+		if err != nil {
+			responses, err = ssdp.Discover(ctx, *wait)
+		} else {
+			responses, err = ssdp.Discover(ctx, *wait, gateway)
+		}
 		ssdpCh <- ssdpResult{responses: responses, err: err}
 	}()
 	go func() {
@@ -193,9 +204,9 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 	for _, err := range descriptionErrors {
 		fmt.Fprintf(stderr, "warning: cannot read a device description: %v\n", err)
 	}
-	incomplete := arp.err != nil || gateway.err != nil || discovery.err != nil || wifiCheck.err != nil || len(descriptionErrors) > 0
+	incomplete = arp.err != nil || gateway.err != nil || discovery.err != nil || wifiCheck.err != nil || len(descriptionErrors) > 0
 	wifiFs := wifiFindings(wifiCheck.security, lang)
-	portMappings, portMappingErr := fetchPortMappings(ctx, httpClient, gatewayIP, discovery.responses, descriptions)
+	portMappings, portMappingQueryRan, portMappingErr := fetchPortMappings(ctx, httpClient, gatewayIP, discovery.responses, descriptions)
 	if portMappingErr != nil {
 		fmt.Fprintf(stderr, "warning: cannot read the router's port forwarding list: %v\n", portMappingErr)
 		incomplete = true
@@ -203,18 +214,18 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 
 	initialHosts := collectHosts(arp.neighbors, gatewayIP, discovery.responses)
 	scanTargets := initialHosts
+	var prefixes []netip.Prefix
+	prefixesFailed := false
 	if gatewayIP.IsValid() {
-		prefixes, err := lan.LocalPrefixes()
+		var err error
+		prefixes, err = lan.LocalPrefixes()
 		if err != nil {
 			fmt.Fprintf(stderr, "warning: cannot list network interfaces: %v\n", err)
 			incomplete = true
+			prefixesFailed = true
 		}
 		scanTargets = mergeHosts(initialHosts, lan.SweepHosts(prefixes, gatewayIP))
 	}
-	if incomplete && !*jsonOutput {
-		fmt.Fprintln(stderr, "warning: some checks could not run; this result may be incomplete")
-	}
-
 	opened := probe.Scan(ctx, scanTargets, []int{23, 2323, 21, 5900, 5555}, 700*time.Millisecond, 128)
 	neighbors := arp.neighbors
 	if len(scanTargets) > len(initialHosts) {
@@ -227,15 +238,17 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 	}
 	canReport, forceIncomplete := reportable(scanObservedNetwork(neighbors, discovery.responses, opened), wifiFs)
 	if forceIncomplete {
-		if !incomplete && !*jsonOutput {
-			fmt.Fprintln(stderr, "warning: some checks could not run; this result may be incomplete")
-		}
 		incomplete = true
 	}
 	if !canReport {
-		fmt.Fprintln(stderr, "error: the scan could not see any device on your network; the result would not be reliable")
+		printNoDeviceError(stderr, lang, wifiCheck.err)
 		return finish(1)
 	}
+
+	if prefixesFailed {
+		prefixes = nil
+	}
+	neighbors = homeNeighbors(neighbors, prefixes, gatewayIP)
 
 	store, existed, err := baseline.Load(*statePath)
 	firstRun := !existed
@@ -264,7 +277,7 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 		neighborByIP[neighbor.IP] = neighbor
 	}
 	deviceNames := make(map[netip.Addr]string, len(reportedHosts))
-	newDevices := make(map[netip.Addr]bool)
+	newDeviceFindings := make(map[netip.Addr]string)
 	now := time.Now().UTC()
 	for _, host := range reportedHosts {
 		neighbor := neighborByIP[host]
@@ -274,26 +287,33 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 			continue
 		}
 		isNew := store.Observe(neighbor.MAC, host.String(), name, now)
-		newDevices[host] = !firstRun && isNew
+		if findingID := newDeviceFindingID(firstRun, isNew, neighbor.MAC); findingID != "" {
+			newDeviceFindings[host] = findingID
+		}
 	}
 
 	devices := make([]deviceOutput, 0, len(reportedHosts))
 	for _, host := range reportedHosts {
 		neighbor := neighborByIP[host]
 		devices = append(devices, deviceOutput{
-			IP: host.String(), MAC: neighbor.MAC, Name: deviceNames[host], New: newDevices[host],
+			IP: host.String(), MAC: neighbor.MAC, Name: deviceNames[host], New: newDeviceFindings[host] != "",
 		})
 	}
 
-	findings := makeFindings(opened, discovery.responses, gatewayIP, descriptions, deviceNames, newDevices, portMappings, lang)
+	findings := makeFindings(opened, discovery.responses, gatewayIP, descriptions, deviceNames, newDeviceFindings, portMappings, lang)
 	findings = markAnonymousFTP(findings, anonymousFTPHosts(ctx, opened), lang)
 	findings = append(findings, wifiFs...)
+	findings = append(findings, gatewaySpoofFindings(neighbors, gatewayIP, lang)...)
 	report.Sort(findings)
 	status := report.Status(report.Score(findings), findings)
 	result := output{
 		Version: version, Score: report.Score(findings), Status: status, FirstRun: firstRun, Incomplete: incomplete,
 		WiFiLocationRequired: errors.Is(wifiCheck.err, wifi.ErrLocationPermission),
-		Gateway:              gatewayString(gatewayIP), Devices: devices, Findings: findings,
+		Checks: checkedSummary{
+			PortForwards: gatewayIP.IsValid() && portMappingQueryRan && portMappingErr == nil,
+			WiFi:         wifiCheck.err == nil && wifiCheck.security != wifi.Unknown,
+		},
+		Gateway: gatewayString(gatewayIP), Devices: devices, Findings: findings,
 	}
 	if err := writeOutput(stdout, result, *jsonOutput, lang); err != nil {
 		if *jsonOutput {
@@ -303,7 +323,9 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 		}
 		return finish(1)
 	}
+	localizedNoticeShown = !*jsonOutput
 	if shouldSaveHistory(true, firstRun, store, loadState) {
+		store.Prune(now, 30*24*time.Hour, lan.IsRandomizedMAC)
 		if err := baseline.Save(*statePath, store); err != nil {
 			fmt.Fprintf(stderr, "warning: cannot save device history: %v\n", err)
 			return finish(1)
@@ -316,6 +338,13 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 		}
 	}
 	return finish(0)
+}
+
+func printNoDeviceError(writer io.Writer, lang string, wifiErr error) {
+	fmt.Fprintln(writer, "error: the scan could not see any device on your network; the result would not be reliable")
+	if errors.Is(wifiErr, wifi.ErrLocationPermission) {
+		fmt.Fprintln(writer, i18n.T(lang, "wifi_location_notice"))
+	}
 }
 
 func printScanningNotice(writer io.Writer, lang string, jsonOutput bool) {
@@ -364,6 +393,13 @@ func writeOutput(writer io.Writer, result output, jsonMode bool, lang string) er
 		return io.ErrShortWrite
 	}
 	return nil
+}
+
+func finishRun(stderr io.Writer, code int, lang string, jsonMode, incomplete, localizedNoticeShown bool) runResult {
+	if incomplete && (jsonMode || !localizedNoticeShown) {
+		fmt.Fprintln(stderr, "warning: some checks could not run; this result may be incomplete")
+	}
+	return runResult{code: code, lang: lang, pause: !jsonMode}
 }
 
 func resolveLanguage(flagValue string, getenv func(string) string) (string, error) {
@@ -492,37 +528,38 @@ func fetchPortMappings(
 	gateway netip.Addr,
 	responses []ssdp.Response,
 	descriptions map[netip.Addr]ssdp.Description,
-) ([]ssdp.PortMapping, error) {
+) ([]ssdp.PortMapping, bool, error) {
 	routerIP, selected := routerUPnPIP(gateway, responses, descriptions)
 	if gateway.IsValid() {
 		routerIP = gateway
 		description, ok := descriptions[routerIP]
 		if !ok {
-			return nil, nil
+			return nil, false, nil
 		}
 		isIGD := description.Device.IsIGD() ||
 			(selected && routerIP == gateway)
 		if !isIGD {
-			return nil, nil
+			return nil, false, nil
 		}
 	} else if !selected {
-		return nil, nil
+		return nil, false, nil
 	}
 	description, ok := descriptions[routerIP]
 	if !ok {
-		return nil, fmt.Errorf("router advertises UPnP but its port forwarding list cannot be queried")
+		return nil, false, fmt.Errorf("router advertises UPnP but its port forwarding list cannot be queried")
 	}
 	service, ok := description.Device.WANConnection()
 	if !ok {
-		return nil, fmt.Errorf("router advertises UPnP but its port forwarding list cannot be queried")
+		return nil, false, fmt.Errorf("router advertises UPnP but its port forwarding list cannot be queried")
 	}
 	controlURL, ok := ssdp.ControlURL(description.Location, description.URLBase, service.ControlURL, routerIP)
 	if !ok {
-		return nil, fmt.Errorf("router advertises UPnP but its port forwarding list cannot be queried")
+		return nil, false, fmt.Errorf("router advertises UPnP but its port forwarding list cannot be queried")
 	}
 	queryContext, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
-	return ssdp.PortMappings(queryContext, client, controlURL, service.ServiceType)
+	mappings, err := ssdp.PortMappings(queryContext, client, controlURL, service.ServiceType)
+	return mappings, true, err
 }
 
 func fetchDescriptions(ctx context.Context, client *http.Client, responses []ssdp.Response) (map[netip.Addr]ssdp.Description, []error) {
@@ -614,13 +651,23 @@ func sanitizeName(s string) string {
 	return name
 }
 
+func newDeviceFindingID(firstRun, isNew bool, mac string) string {
+	if firstRun || !isNew {
+		return ""
+	}
+	if lan.IsRandomizedMAC(mac) {
+		return "new_device_private"
+	}
+	return "new_device"
+}
+
 func makeFindings(
 	opened []probe.Open,
 	responses []ssdp.Response,
 	gateway netip.Addr,
 	descriptions map[netip.Addr]ssdp.Description,
 	deviceNames map[netip.Addr]string,
-	newDevices map[netip.Addr]bool,
+	newDeviceFindings map[netip.Addr]string,
 	portMappings []ssdp.PortMapping,
 	lang string,
 ) []report.Finding {
@@ -643,9 +690,9 @@ func makeFindings(
 			findings = append(findings, report.Finding{ID: "adb_open", Level: report.Caution, Points: 8, IP: item.IP.String(), Device: name})
 		}
 	}
-	for ip, isNew := range newDevices {
-		if isNew {
-			findings = append(findings, report.Finding{ID: "new_device", Level: report.Caution, Points: 3, IP: ip.String(), Device: deviceNames[ip]})
+	for ip, findingID := range newDeviceFindings {
+		if findingID != "" {
+			findings = append(findings, report.Finding{ID: findingID, Level: report.Caution, Points: 3, IP: ip.String(), Device: deviceNames[ip]})
 		}
 	}
 
@@ -685,6 +732,10 @@ func makeFindings(
 		}
 		if riskyPortForward(mapping) {
 			group.id, group.level, group.points = "port_forward_risky", report.Danger, 20
+			switch mapping.InternalPort {
+			case 554, 37777, 34567:
+				group.id = "forward_camera"
+			}
 		}
 		if index, exists := groupIndexes[key]; exists {
 			if group.points > groups[index].points {
@@ -717,9 +768,9 @@ func makeFindings(
 		finding.Message = i18n.T(lang, finding.ID)
 		finding.Fix = i18n.T(lang, finding.ID+"_fix")
 		switch finding.ID {
-		case "telnet_open", "ftp_open", "vnc_open", "adb_open", "new_device":
+		case "telnet_open", "ftp_open", "vnc_open", "adb_open", "new_device", "new_device_private":
 			finding.Message = i18n.T(lang, finding.ID, finding.Device)
-		case "port_forward", "port_forward_risky":
+		case "port_forward", "port_forward_risky", "forward_camera":
 			finding.Message = i18n.T(lang, finding.ID, finding.Device, finding.Port)
 		}
 	}
@@ -735,7 +786,7 @@ func riskyPortForward(mapping ssdp.PortMapping) bool {
 		return false
 	}
 	switch mapping.InternalPort {
-	case 21, 22, 23, 2323, 445, 3389, 5900, 5555:
+	case 21, 22, 23, 445, 554, 2323, 3389, 5555, 5900, 34567, 37777:
 		return true
 	default:
 		return false
@@ -794,6 +845,17 @@ func wifiFindings(security wifi.Security, lang string) []report.Finding {
 func renderText(writer io.Writer, result output, lang string) {
 	fmt.Fprintln(writer, i18n.T(lang, "title"))
 	fmt.Fprintln(writer, i18n.T(lang, "score", i18n.T(lang, result.Status), result.Score))
+	checkedItems := []string{
+		i18n.T(lang, "checked_devices", i18n.CheckedDeviceCount(lang, len(result.Devices))),
+		i18n.T(lang, "checked_ports"),
+	}
+	if result.Checks.PortForwards {
+		checkedItems = append(checkedItems, i18n.T(lang, "checked_forwards"))
+	}
+	if result.Checks.WiFi {
+		checkedItems = append(checkedItems, i18n.T(lang, "checked_wifi"))
+	}
+	fmt.Fprintln(writer, strings.Join(checkedItems, i18n.T(lang, "checked_sep")))
 	if result.Incomplete {
 		fmt.Fprintln(writer, i18n.T(lang, "incomplete_notice"))
 	}

@@ -7,7 +7,9 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 )
@@ -27,6 +29,18 @@ var ErrLocationPermission = errors.New("Windows location permission is required 
 func Current(ctx context.Context) (Security, error) {
 	commandContext, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
+	if err := commandContext.Err(); err != nil {
+		return Unknown, err
+	}
+
+	if runtime.GOOS == "windows" {
+		if security, handled, err := currentWLAN(); handled {
+			if err := commandContext.Err(); err != nil {
+				return Unknown, err
+			}
+			return security, err
+		}
+	}
 
 	var command *exec.Cmd
 	switch runtime.GOOS {
@@ -51,6 +65,9 @@ func Current(ctx context.Context) (Security, error) {
 		return Unknown, ErrLocationPermission
 	}
 	if err != nil {
+		if runtime.GOOS == "linux" {
+			return wpaCliSecurity(commandContext)
+		}
 		return Unknown, nil
 	}
 
@@ -58,7 +75,11 @@ func Current(ctx context.Context) (Security, error) {
 	case "darwin":
 		return ParseMacOS(output), nil
 	case "linux":
-		return ParseNmcli(string(output)), nil
+		security := ParseNmcli(string(output))
+		if security == Unknown {
+			return wpaCliSecurity(commandContext)
+		}
+		return security, nil
 	case "windows":
 		return ParseNetsh(string(output)), nil
 	default:
@@ -139,6 +160,150 @@ func ParseNmcli(text string) Security {
 	return Unknown
 }
 
+func wpaCliSecurity(ctx context.Context) (Security, error) {
+	interfaces := supplicantInterfaces([]string{"/run/wpa_supplicant", "/var/run/wpa_supplicant"})
+	if len(interfaces) == 0 {
+		return wpaCliStatus(ctx, "status")
+	}
+
+	results := make([]Security, 0, len(interfaces))
+	for _, iface := range interfaces {
+		security, err := wpaCliStatus(ctx, "-p", iface.dir, "-i", iface.name, "status")
+		if err != nil {
+			return Unknown, err
+		}
+		results = append(results, security)
+	}
+	return worstSecurity(results), nil
+}
+
+type supplicantInterface struct {
+	dir  string
+	name string
+}
+
+func supplicantInterfaces(dirs []string) []supplicantInterface {
+	seenDirs := make(map[string]struct{}, len(dirs))
+	var interfaces []supplicantInterface
+	for _, dir := range dirs {
+		resolvedDir, err := filepath.EvalSymlinks(dir)
+		if err != nil {
+			continue
+		}
+		if _, ok := seenDirs[resolvedDir]; ok {
+			continue
+		}
+		seenDirs[resolvedDir] = struct{}{}
+
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, entry := range entries {
+			name := entry.Name()
+			if entry.IsDir() || strings.HasPrefix(name, "p2p-dev-") {
+				continue
+			}
+			interfaces = append(interfaces, supplicantInterface{dir: dir, name: name})
+		}
+	}
+	sort.Slice(interfaces, func(i, j int) bool {
+		if interfaces[i].dir != interfaces[j].dir {
+			return interfaces[i].dir < interfaces[j].dir
+		}
+		return interfaces[i].name < interfaces[j].name
+	})
+	return interfaces
+}
+
+func worstSecurity(results []Security) Security {
+	worst := Unknown
+	for _, result := range results {
+		if result == Unknown {
+			continue
+		}
+		if worst == Unknown || result < worst {
+			worst = result
+		}
+	}
+	return worst
+}
+
+func wpaCliStatus(ctx context.Context, args ...string) (Security, error) {
+	command := exec.CommandContext(ctx, "wpa_cli", args...)
+	command.Env = withLCAllC(os.Environ())
+
+	var errorOutput bytes.Buffer
+	command.Stderr = &errorOutput
+	output, err := command.Output()
+	if ctx.Err() != nil {
+		return Unknown, ctx.Err()
+	}
+	if err != nil {
+		return Unknown, nil
+	}
+	return ParseWPACli(string(output)), nil
+}
+
+func ParseWPACli(text string) Security {
+	var state, keyManagement, pairwiseCipher, groupCipher string
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSuffix(line, "\r")
+		key, value, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		switch key {
+		case "wpa_state":
+			state = value
+		case "key_mgmt":
+			keyManagement = value
+		case "pairwise_cipher":
+			pairwiseCipher = value
+		case "group_cipher":
+			groupCipher = value
+		}
+	}
+	if state != "COMPLETED" {
+		return Unknown
+	}
+
+	hasDynamicWEP, hasNone, hasWPA1 := false, false, false
+	for _, method := range strings.Split(keyManagement, "+") {
+		switch method {
+		case "IEEE 802.1X (no WPA)":
+			hasDynamicWEP = true
+		case "NONE":
+			hasNone = true
+		case "WPA-PSK", "WPA-NONE":
+			hasWPA1 = true
+		default:
+			if strings.HasPrefix(method, "WPA/") {
+				hasWPA1 = true
+			}
+		}
+	}
+	if hasDynamicWEP {
+		return WEP
+	}
+	if hasWPA1 {
+		return WPA1orTKIP
+	}
+	if hasNone {
+		if strings.HasPrefix(pairwiseCipher, "WEP") || strings.HasPrefix(groupCipher, "WEP") {
+			return WEP
+		}
+		return Open
+	}
+	if pairwiseCipher == "TKIP" || groupCipher == "TKIP" {
+		return WPA1orTKIP
+	}
+	if keyManagement != "" {
+		return Modern
+	}
+	return Unknown
+}
+
 func ParseNetsh(text string) Security {
 	text = strings.ReplaceAll(text, "\r\n", "\n")
 	var blocks []string
@@ -195,7 +360,12 @@ func ParseNetsh(text string) Security {
 }
 
 func NetshNeedsLocation(text string) bool {
-	return strings.Contains(text, "ms-settings:privacy-location")
+	for _, line := range strings.Split(text, "\n") {
+		if strings.TrimSpace(line) == "ms-settings:privacy-location" {
+			return true
+		}
+	}
+	return false
 }
 
 func isConnectedValue(value string) bool {
