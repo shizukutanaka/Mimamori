@@ -1,6 +1,7 @@
 package wifi
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -40,11 +41,13 @@ func Current(ctx context.Context) (Security, error) {
 		return Unknown, nil
 	}
 
+	var errorOutput bytes.Buffer
+	command.Stderr = &errorOutput
 	output, err := command.Output()
 	if commandContext.Err() != nil {
 		return Unknown, commandContext.Err()
 	}
-	if runtime.GOOS == "windows" && NetshNeedsLocation(string(output)) {
+	if runtime.GOOS == "windows" && (NetshNeedsLocation(string(output)) || NetshNeedsLocation(errorOutput.String())) {
 		return Unknown, ErrLocationPermission
 	}
 	if err != nil {
