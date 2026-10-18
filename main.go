@@ -217,6 +217,7 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 
 	opened := probe.Scan(ctx, scanTargets, []int{23, 2323, 21, 5900, 5555}, 700*time.Millisecond, 128)
 	neighbors := arp.neighbors
+	opened = markUnauthenticatedVNC(ctx, opened)
 	if len(scanTargets) > len(initialHosts) {
 		refreshed, err := lan.ReadARP(ctx)
 		if err != nil {
@@ -638,6 +639,8 @@ func makeFindings(
 			findings = append(findings, report.Finding{ID: "ftp_open", Level: report.Caution, Points: 8, IP: item.IP.String(), Device: name})
 		case 5900:
 			findings = append(findings, report.Finding{ID: "vnc_open", Level: report.Caution, Points: 8, IP: item.IP.String(), Device: name})
+		case vncNoAuthPort:
+			findings = append(findings, report.Finding{ID: "vnc_noauth", Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name})
 		case 5555:
 			findings = append(findings, report.Finding{ID: "adb_open", Level: report.Caution, Points: 8, IP: item.IP.String(), Device: name})
 		}
@@ -720,6 +723,9 @@ func makeFindings(
 			finding.Message = i18n.T(lang, finding.ID, finding.Device)
 		case "port_forward", "port_forward_risky":
 			finding.Message = i18n.T(lang, finding.ID, finding.Device, finding.Port)
+		}
+		if finding.ID == "vnc_noauth" {
+			finding.Message = i18n.T(lang, finding.ID, finding.Device)
 		}
 	}
 	return findings
