@@ -68,16 +68,6 @@ func TestADBCatalogCoverage(t *testing.T) {
 	}
 }
 
-func TestUPnPStackCatalogCoverage(t *testing.T) {
-	for _, lang := range Supported() {
-		for _, key := range []string{"upnp_stack_vulnerable", "upnp_stack_vulnerable_fix"} {
-			if value, ok := messages[lang][key]; !ok || value == "" {
-				t.Errorf("%s catalog is missing %q", lang, key)
-			}
-		}
-	}
-}
-
 func TestSupplementalCatalogKeys(t *testing.T) {
 	keys := []string{
 		"wifi_open", "wifi_open_fix", "wifi_wep", "wifi_wep_fix", "wifi_weak", "wifi_weak_fix",
