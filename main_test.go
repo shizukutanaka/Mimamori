@@ -738,3 +738,56 @@ func TestWiFiFindings(t *testing.T) {
 		})
 	}
 }
+
+func TestWiFiLocationRequiredTextAndJSON(t *testing.T) {
+	scoreLine := i18n.T("ja", "score", i18n.T("ja", "safe"), 100)
+	incompleteNotice := i18n.T("ja", "incomplete_notice")
+	locationNotice := i18n.T("ja", "wifi_location_notice")
+
+	var textOutput bytes.Buffer
+	renderText(&textOutput, output{
+		Score: 100, Status: "safe", Incomplete: true, WiFiLocationRequired: true,
+	}, "ja")
+	lines := strings.Split(strings.TrimSuffix(textOutput.String(), "\n"), "\n")
+	if len(lines) < 4 {
+		t.Fatalf("renderText() output has too few lines: %q", textOutput.String())
+	}
+	if lines[1] != scoreLine || lines[2] != incompleteNotice || lines[3] != locationNotice {
+		t.Fatalf("notice order = %q, %q, %q; want score, incomplete notice, location notice", lines[1], lines[2], lines[3])
+	}
+
+	var noLocationNotice bytes.Buffer
+	renderText(&noLocationNotice, output{
+		Score: 100, Status: "safe", Incomplete: true, WiFiLocationRequired: false,
+	}, "ja")
+	if strings.Contains(noLocationNotice.String(), locationNotice) {
+		t.Fatal("renderText() included the location notice when WiFiLocationRequired is false")
+	}
+
+	for _, test := range []struct {
+		name     string
+		required bool
+		present  bool
+	}{
+		{name: "false is omitted", required: false, present: false},
+		{name: "true is included", required: true, present: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var jsonOutput bytes.Buffer
+			if err := writeOutput(&jsonOutput, output{WiFiLocationRequired: test.required}, true, "ja"); err != nil {
+				t.Fatal(err)
+			}
+			var result map[string]any
+			if err := json.Unmarshal(jsonOutput.Bytes(), &result); err != nil {
+				t.Fatal(err)
+			}
+			value, exists := result["wifi_location_required"]
+			if exists != test.present {
+				t.Fatalf("JSON key presence = %t, want %t", exists, test.present)
+			}
+			if test.present && value != true {
+				t.Fatalf("JSON wifi_location_required = %#v, want true", value)
+			}
+		})
+	}
+}

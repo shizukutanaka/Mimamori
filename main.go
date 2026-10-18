@@ -38,14 +38,15 @@ type deviceOutput struct {
 }
 
 type output struct {
-	Version    string           `json:"version"`
-	Score      int              `json:"score"`
-	Status     string           `json:"status"`
-	FirstRun   bool             `json:"first_run"`
-	Incomplete bool             `json:"incomplete"`
-	Gateway    string           `json:"gateway"`
-	Devices    []deviceOutput   `json:"devices"`
-	Findings   []report.Finding `json:"findings"`
+	Version              string           `json:"version"`
+	Score                int              `json:"score"`
+	Status               string           `json:"status"`
+	FirstRun             bool             `json:"first_run"`
+	Incomplete           bool             `json:"incomplete"`
+	WiFiLocationRequired bool             `json:"wifi_location_required,omitempty"`
+	Gateway              string           `json:"gateway"`
+	Devices              []deviceOutput   `json:"devices"`
+	Findings             []report.Finding `json:"findings"`
 }
 
 type historyLoadState uint8
@@ -288,7 +289,8 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 	status := report.Status(report.Score(findings), findings)
 	result := output{
 		Version: version, Score: report.Score(findings), Status: status, FirstRun: firstRun, Incomplete: incomplete,
-		Gateway: gatewayString(gatewayIP), Devices: devices, Findings: findings,
+		WiFiLocationRequired: errors.Is(wifiCheck.err, wifi.ErrLocationPermission),
+		Gateway:              gatewayString(gatewayIP), Devices: devices, Findings: findings,
 	}
 	if err := writeOutput(stdout, result, *jsonOutput, lang); err != nil {
 		if *jsonOutput {
@@ -771,6 +773,9 @@ func renderText(writer io.Writer, result output, lang string) {
 	fmt.Fprintln(writer, i18n.T(lang, "score", i18n.T(lang, result.Status), result.Score))
 	if result.Incomplete {
 		fmt.Fprintln(writer, i18n.T(lang, "incomplete_notice"))
+	}
+	if result.WiFiLocationRequired {
+		fmt.Fprintln(writer, i18n.T(lang, "wifi_location_notice"))
 	}
 	newCount := 0
 	for _, device := range result.Devices {
