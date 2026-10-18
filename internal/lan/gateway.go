@@ -12,12 +12,23 @@ import (
 	"strings"
 )
 
-var windowsRoutePattern = regexp.MustCompile(`(?m)^\s*0\.0\.0\.0\s+0\.0\.0\.0\s+(\d+\.\d+\.\d+\.\d+)`)
+var windowsRoutePattern = regexp.MustCompile(`(?m)^\s*0\.0\.0\.0\s+0\.0\.0\.0\s+(\d+\.\d+\.\d+\.\d+)\s+\S+\s+(\d+)\s*$`)
 
 func ParseLinuxRoute(text string) (netip.Addr, bool) {
+	var bestGateway netip.Addr
+	var bestMetric uint64
+	found := false
 	for _, line := range strings.Split(text, "\n") {
 		fields := strings.Fields(line)
-		if len(fields) < 3 || fields[1] != "00000000" || len(fields[2]) != 8 {
+		if len(fields) < 7 || fields[1] != "00000000" || len(fields[2]) != 8 {
+			continue
+		}
+		flags, err := strconv.ParseUint(fields[3], 16, 32)
+		if err != nil || flags&0x1 == 0 || flags&0x2 == 0 {
+			continue
+		}
+		metric, err := strconv.ParseUint(fields[6], 10, 64)
+		if err != nil {
 			continue
 		}
 		value, err := strconv.ParseUint(fields[2], 16, 32)
@@ -30,11 +41,16 @@ func ParseLinuxRoute(text string) (netip.Addr, bool) {
 			byte(value >> 16),
 			byte(value >> 24),
 		})
-		if !gateway.IsUnspecified() {
-			return gateway, true
+		if gateway.IsUnspecified() {
+			continue
+		}
+		if !found || metric < bestMetric {
+			bestGateway = gateway
+			bestMetric = metric
+			found = true
 		}
 	}
-	return netip.Addr{}, false
+	return bestGateway, found
 }
 
 func ParseBSDRoute(text string) (netip.Addr, bool) {
@@ -53,13 +69,25 @@ func ParseBSDRoute(text string) (netip.Addr, bool) {
 }
 
 func ParseWindowsRoute(text string) (netip.Addr, bool) {
+	var bestGateway netip.Addr
+	var bestMetric uint64
+	found := false
 	for _, match := range windowsRoutePattern.FindAllStringSubmatch(text, -1) {
 		gateway, err := netip.ParseAddr(match[1])
-		if err == nil && gateway.Is4() && !gateway.IsUnspecified() {
-			return gateway, true
+		if err != nil || !gateway.Is4() || gateway.IsUnspecified() {
+			continue
+		}
+		metric, err := strconv.ParseUint(match[2], 10, 64)
+		if err != nil {
+			continue
+		}
+		if !found || metric < bestMetric {
+			bestGateway = gateway
+			bestMetric = metric
+			found = true
 		}
 	}
-	return netip.Addr{}, false
+	return bestGateway, found
 }
 
 func DefaultGateway(ctx context.Context) (netip.Addr, error) {

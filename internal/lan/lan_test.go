@@ -86,7 +86,11 @@ func TestIsRandomizedMAC(t *testing.T) {
 
 func TestRouteParsers(t *testing.T) {
 	t.Run("linux", func(t *testing.T) {
-		got, ok := ParseLinuxRoute("Iface Destination Gateway Flags RefCnt Use Metric Mask\neth0 00000000 0101A8C0 0003 0 0 100 00000000\n")
+		text := "Iface Destination Gateway Flags RefCnt Use Metric Mask\n" +
+			"eth0 00000000 0201A8C0 0003 0 0 600 00000000\n" +
+			"eth0 00000000 0101A8C0 0003 0 0 100 00000000\n" +
+			"eth1 00000000 0301A8C0 0001 0 0 1 00000000\n"
+		got, ok := ParseLinuxRoute(text)
 		if !ok || got.String() != "192.168.1.1" {
 			t.Fatalf("ParseLinuxRoute() = %v, %v", got, ok)
 		}
@@ -101,7 +105,11 @@ func TestRouteParsers(t *testing.T) {
 		}
 	})
 	t.Run("Windows", func(t *testing.T) {
-		got, ok := ParseWindowsRoute("Network Destination        Netmask          Gateway\n0.0.0.0          0.0.0.0      0.0.0.0\n0.0.0.0          0.0.0.0      192.168.1.1\n")
+		text := "Network Destination        Netmask          Gateway        Interface       Metric\n" +
+			"0.0.0.0          0.0.0.0      On-link        192.168.1.10    1\n" +
+			"0.0.0.0          0.0.0.0      192.168.1.2    192.168.1.10    600\n" +
+			"0.0.0.0          0.0.0.0      192.168.1.1    192.168.1.10    100\n"
+		got, ok := ParseWindowsRoute(text)
 		if !ok || got.String() != "192.168.1.1" {
 			t.Fatalf("ParseWindowsRoute() = %v, %v", got, ok)
 		}
