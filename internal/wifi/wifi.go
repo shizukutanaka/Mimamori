@@ -28,6 +28,12 @@ func Current(ctx context.Context) (Security, error) {
 	commandContext, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 
+	if runtime.GOOS == "windows" {
+		if security, handled, err := currentWLAN(); handled {
+			return security, err
+		}
+	}
+
 	var command *exec.Cmd
 	switch runtime.GOOS {
 	case "darwin":
