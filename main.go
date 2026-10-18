@@ -164,9 +164,12 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 	go func() {
 		gateway, err := lan.DefaultGateway(ctx)
 		gatewayCh <- gatewayResult{gateway: gateway, err: err}
-	}()
-	go func() {
-		responses, err := ssdp.Discover(ctx, *wait)
+		var responses []ssdp.Response
+		if err != nil {
+			responses, err = ssdp.Discover(ctx, *wait)
+		} else {
+			responses, err = ssdp.Discover(ctx, *wait, gateway)
+		}
 		ssdpCh <- ssdpResult{responses: responses, err: err}
 	}()
 	go func() {
