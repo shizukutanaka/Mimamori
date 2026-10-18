@@ -120,6 +120,10 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 		fmt.Fprintln(stderr, i18n.T(pre, "usage_header"))
 		flags.PrintDefaults()
 	}
+	lang := ""
+	finish := func(code int) runResult {
+		return runResult{code: code, lang: lang, pause: !*jsonOutput}
+	}
 	if err := flags.Parse(args); err != nil {
 		if err == flag.ErrHelp {
 			return earlyRunResult(0, pre, *jsonOutput)
@@ -139,15 +143,11 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 		fmt.Fprintln(stderr, err)
 		return earlyRunResult(1, pre, *jsonOutput)
 	}
+	lang = resolvedLang
 	if *wait < 0 {
 		fmt.Fprintln(stderr, i18n.T(pre, "wait_negative"))
 		return earlyRunResult(1, pre, *jsonOutput)
 	}
-	lang := ""
-	finish := func(code int) runResult {
-		return runResult{code: code, lang: lang, pause: !*jsonOutput}
-	}
-	lang = resolvedLang
 	if *statePath == "" {
 		var err error
 		*statePath, err = baseline.DefaultPath()
