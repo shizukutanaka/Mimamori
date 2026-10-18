@@ -44,9 +44,15 @@ type output struct {
 	FirstRun             bool             `json:"first_run"`
 	Incomplete           bool             `json:"incomplete"`
 	WiFiLocationRequired bool             `json:"wifi_location_required,omitempty"`
+	Checks               checkedSummary   `json:"-"`
 	Gateway              string           `json:"gateway"`
 	Devices              []deviceOutput   `json:"devices"`
 	Findings             []report.Finding `json:"findings"`
+}
+
+type checkedSummary struct {
+	PortForwards bool
+	WiFi         bool
 }
 
 type historyLoadState uint8
@@ -195,7 +201,7 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 	}
 	incomplete := arp.err != nil || gateway.err != nil || discovery.err != nil || wifiCheck.err != nil || len(descriptionErrors) > 0
 	wifiFs := wifiFindings(wifiCheck.security, lang)
-	portMappings, portMappingErr := fetchPortMappings(ctx, httpClient, gatewayIP, discovery.responses, descriptions)
+	portMappings, portMappingQueryRan, portMappingErr := fetchPortMappings(ctx, httpClient, gatewayIP, discovery.responses, descriptions)
 	if portMappingErr != nil {
 		fmt.Fprintf(stderr, "warning: cannot read the router's port forwarding list: %v\n", portMappingErr)
 		incomplete = true
@@ -302,7 +308,11 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 	result := output{
 		Version: version, Score: report.Score(findings), Status: status, FirstRun: firstRun, Incomplete: incomplete,
 		WiFiLocationRequired: errors.Is(wifiCheck.err, wifi.ErrLocationPermission),
-		Gateway:              gatewayString(gatewayIP), Devices: devices, Findings: findings,
+		Checks: checkedSummary{
+			PortForwards: gatewayIP.IsValid() && portMappingQueryRan && portMappingErr == nil,
+			WiFi:         wifiCheck.err == nil && wifiCheck.security != wifi.Unknown,
+		},
+		Gateway: gatewayString(gatewayIP), Devices: devices, Findings: findings,
 	}
 	if err := writeOutput(stdout, result, *jsonOutput, lang); err != nil {
 		if *jsonOutput {
@@ -508,37 +518,38 @@ func fetchPortMappings(
 	gateway netip.Addr,
 	responses []ssdp.Response,
 	descriptions map[netip.Addr]ssdp.Description,
-) ([]ssdp.PortMapping, error) {
+) ([]ssdp.PortMapping, bool, error) {
 	routerIP, selected := routerUPnPIP(gateway, responses, descriptions)
 	if gateway.IsValid() {
 		routerIP = gateway
 		description, ok := descriptions[routerIP]
 		if !ok {
-			return nil, nil
+			return nil, false, nil
 		}
 		isIGD := description.Device.IsIGD() ||
 			(selected && routerIP == gateway)
 		if !isIGD {
-			return nil, nil
+			return nil, false, nil
 		}
 	} else if !selected {
-		return nil, nil
+		return nil, false, nil
 	}
 	description, ok := descriptions[routerIP]
 	if !ok {
-		return nil, fmt.Errorf("router advertises UPnP but its port forwarding list cannot be queried")
+		return nil, false, fmt.Errorf("router advertises UPnP but its port forwarding list cannot be queried")
 	}
 	service, ok := description.Device.WANConnection()
 	if !ok {
-		return nil, fmt.Errorf("router advertises UPnP but its port forwarding list cannot be queried")
+		return nil, false, fmt.Errorf("router advertises UPnP but its port forwarding list cannot be queried")
 	}
 	controlURL, ok := ssdp.ControlURL(description.Location, description.URLBase, service.ControlURL, routerIP)
 	if !ok {
-		return nil, fmt.Errorf("router advertises UPnP but its port forwarding list cannot be queried")
+		return nil, false, fmt.Errorf("router advertises UPnP but its port forwarding list cannot be queried")
 	}
 	queryContext, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
-	return ssdp.PortMappings(queryContext, client, controlURL, service.ServiceType)
+	mappings, err := ssdp.PortMappings(queryContext, client, controlURL, service.ServiceType)
+	return mappings, true, err
 }
 
 func fetchDescriptions(ctx context.Context, client *http.Client, responses []ssdp.Response) (map[netip.Addr]ssdp.Description, []error) {
@@ -814,6 +825,17 @@ func wifiFindings(security wifi.Security, lang string) []report.Finding {
 func renderText(writer io.Writer, result output, lang string) {
 	fmt.Fprintln(writer, i18n.T(lang, "title"))
 	fmt.Fprintln(writer, i18n.T(lang, "score", i18n.T(lang, result.Status), result.Score))
+	checkedItems := []string{
+		i18n.T(lang, "checked_devices", i18n.CheckedDeviceCount(lang, len(result.Devices))),
+		i18n.T(lang, "checked_ports"),
+	}
+	if result.Checks.PortForwards {
+		checkedItems = append(checkedItems, i18n.T(lang, "checked_forwards"))
+	}
+	if result.Checks.WiFi {
+		checkedItems = append(checkedItems, i18n.T(lang, "checked_wifi"))
+	}
+	fmt.Fprintln(writer, strings.Join(checkedItems, i18n.T(lang, "checked_sep")))
 	if result.Incomplete {
 		fmt.Fprintln(writer, i18n.T(lang, "incomplete_notice"))
 	}
