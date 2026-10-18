@@ -155,6 +155,9 @@ func reverseNames(
 		if _, exists := names[sourceIP]; !exists {
 			names[sourceIP] = target
 		}
+		if len(names) == len(queries) {
+			return names
+		}
 	}
 }
 

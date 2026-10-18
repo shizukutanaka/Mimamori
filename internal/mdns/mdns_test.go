@@ -82,15 +82,20 @@ func TestReverseNames(t *testing.T) {
 	host := netip.MustParseAddr("127.0.0.1")
 	question, _ := reverseQuestion(host)
 
-	t.Run("strips local suffix", func(t *testing.T) {
+	t.Run("strips local suffix and returns early", func(t *testing.T) {
 		port := startResponder(t, nil, func(query []byte) []byte {
 			response := makePTRResponse(question, question, "TaroS-iPhone.local", 12, 1, 0x8000)
 			copy(response[:2], query[:2])
 			return response
 		})
-		names := reverseNames(context.Background(), []netip.Addr{host}, port, netip.Addr.IsLoopback, time.Second)
+		start := time.Now()
+		names := reverseNames(context.Background(), []netip.Addr{host}, port, netip.Addr.IsLoopback, 3*time.Second)
+		elapsed := time.Since(start)
 		if got := names[host]; got != "taros-iphone" {
 			t.Fatalf("ReverseNames() name = %q, want %q", got, "taros-iphone")
+		}
+		if elapsed >= time.Second {
+			t.Fatalf("ReverseNames() took %v, want early return well before the 3 second timeout", elapsed)
 		}
 	})
 
