@@ -8,7 +8,35 @@ Mimamori never changes settings, contacts the Internet, or sends telemetry. Netw
 
 ## Download and run
 
-Download the binary for your operating system and run it from a terminal:
+Download the latest release from [GitHub Releases](https://github.com/shizukutanaka/Mimamori/releases/latest). Choose the file for your PC; `<version>` is the release tag shown on that page:
+
+| Your PC | File |
+| --- | --- |
+| Most Windows PCs | `mimamori-<version>-windows-amd64.zip` |
+| Windows on ARM (for example, Snapdragon) | `mimamori-<version>-windows-arm64.zip` |
+| Mac with an Apple chip | `mimamori-<version>-darwin-arm64.tar.gz` |
+| Intel Mac | `mimamori-<version>-darwin-amd64.tar.gz` |
+| Most Linux PCs | `mimamori-<version>-linux-amd64.tar.gz` |
+| 64-bit Raspberry Pi | `mimamori-<version>-linux-arm64.tar.gz` |
+| 32-bit Raspberry Pi | `mimamori-<version>-linux-arm.tar.gz` |
+
+Download `SHA256SUMS` from the same release to verify the archive. Replace `<archive>` below with the downloaded file's name. Compare the hash printed on Windows or macOS with the matching line in `SHA256SUMS`; on Linux, run the check from the folder containing both files:
+
+```text
+Windows: certutil -hashfile <archive> SHA256
+macOS:   shasum -a 256 <archive>
+Linux:   sha256sum -c SHA256SUMS --ignore-missing
+```
+
+Extract the archive before running Mimamori. The binaries are unsigned, so your operating system may show a first-run warning:
+
+- Windows SmartScreen: choose **More info → Run anyway**.
+- macOS: choose **System Settings → Privacy & Security → Open Anyway**, or run `xattr -d com.apple.quarantine ./mimamori`.
+- Linux: run `chmod +x ./mimamori`.
+
+For maintainers: run `VERSION=v0.1.0 scripts/dist.sh`, then upload `dist/*` to a GitHub Release.
+
+After extracting, run Mimamori from a terminal:
 
 ```sh
 ./mimamori
@@ -46,7 +74,7 @@ Go 1.22 or later is required. The project uses only the Go standard library.
 
 ```sh
 go build -o mimamori .
-./scripts/dist.sh
+VERSION=v0.1.0 scripts/dist.sh
 ```
 
 To add a language, add a catalog file in `internal/i18n` and list its code in `Supported()`.
@@ -63,7 +91,35 @@ Mimamori は「今、家のネットワークは安全だろうか？」とい�
 
 ## ダウンロードと実行
 
-お使いの OS 向けのバイナリをダウンロードし、ターミナルから実行します。
+お使いの PC に合うファイルを [GitHub Releases](https://github.com/shizukutanaka/Mimamori/releases/latest) からダウンロードしてください。`<version>` はリリースページに表示されているタグです。
+
+| PC | ファイル |
+| --- | --- |
+| ほとんどの Windows PC | `mimamori-<version>-windows-amd64.zip` |
+| ARM 版 Windows（Snapdragon など） | `mimamori-<version>-windows-arm64.zip` |
+| Apple チップ搭載 Mac | `mimamori-<version>-darwin-arm64.tar.gz` |
+| Intel Mac | `mimamori-<version>-darwin-amd64.tar.gz` |
+| ほとんどの Linux PC | `mimamori-<version>-linux-amd64.tar.gz` |
+| 64 ビット Raspberry Pi | `mimamori-<version>-linux-arm64.tar.gz` |
+| 32 ビット Raspberry Pi | `mimamori-<version>-linux-arm.tar.gz` |
+
+同じリリースにある `SHA256SUMS` もダウンロードして、ファイルが正しいか確認できます。コマンド中の `<ファイル名>` はダウンロードしたファイル名に置き換えてください。Windows と macOS では表示されたハッシュを `SHA256SUMS` の該当行と比べてください。Linux では両方のファイルがあるフォルダーで実行します。
+
+```text
+Windows: certutil -hashfile <ファイル名> SHA256
+macOS:   shasum -a 256 <ファイル名>
+Linux:   sha256sum -c SHA256SUMS --ignore-missing
+```
+
+アーカイブを展開してから実行してください。バイナリは署名されていないため、初回起動時に OS の警告が出ることがあります。
+
+- Windows SmartScreen: **「詳細情報」→「実行」** を選びます。
+- macOS: **システム設定 → プライバシーとセキュリティ →「このまま開く」** を選ぶか、`xattr -d com.apple.quarantine ./mimamori` を実行します。
+- Linux: `chmod +x ./mimamori` を実行します。
+
+メンテナー向け: `VERSION=v0.1.0 scripts/dist.sh` を実行し、`dist/*` を GitHub Release にアップロードしてください。
+
+展開後、ターミナルから実行します。
 
 ```sh
 ./mimamori
@@ -94,7 +150,7 @@ Go 1.22 以降が必要です。Go 標準ライブラリ以外の依存はあり
 
 ```sh
 go build -o mimamori .
-./scripts/dist.sh
+VERSION=v0.1.0 scripts/dist.sh
 ```
 
 言語を追加する場合は `internal/i18n` にカタログファイルを追加し、`Supported()` にコードを登録してください。
