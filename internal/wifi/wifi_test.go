@@ -1,11 +1,25 @@
 package wifi
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestCurrentReturnsCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	security, err := Current(ctx)
+	if security != Unknown {
+		t.Fatalf("Current() security = %v, want Unknown", security)
+	}
+	if err != context.Canceled {
+		t.Fatalf("Current() error = %v, want %v", err, context.Canceled)
+	}
+}
 
 func TestParseMacOS(t *testing.T) {
 	tests := []struct {

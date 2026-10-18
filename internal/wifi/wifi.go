@@ -29,6 +29,18 @@ var ErrLocationPermission = errors.New("Windows location permission is required 
 func Current(ctx context.Context) (Security, error) {
 	commandContext, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
+	if err := commandContext.Err(); err != nil {
+		return Unknown, err
+	}
+
+	if runtime.GOOS == "windows" {
+		if security, handled, err := currentWLAN(); handled {
+			if err := commandContext.Err(); err != nil {
+				return Unknown, err
+			}
+			return security, err
+		}
+	}
 
 	var command *exec.Cmd
 	switch runtime.GOOS {
