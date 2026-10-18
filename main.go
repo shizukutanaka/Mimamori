@@ -358,25 +358,32 @@ func fetchPortMappings(
 	responses []ssdp.Response,
 	descriptions map[netip.Addr]ssdp.Description,
 ) ([]ssdp.PortMapping, error) {
-	routerIP := gateway
-	if !routerIP.IsValid() {
-		var ok bool
-		routerIP, ok = routerUPnPIP(gateway, responses, descriptions)
+	routerIP, selected := routerUPnPIP(gateway, responses, descriptions)
+	if gateway.IsValid() {
+		routerIP = gateway
+		description, ok := descriptions[routerIP]
 		if !ok {
 			return nil, nil
 		}
+		isIGD := strings.Contains(strings.ToLower(description.Device.DeviceType), "internetgatewaydevice") ||
+			(selected && routerIP == gateway)
+		if !isIGD {
+			return nil, nil
+		}
+	} else if !selected {
+		return nil, nil
 	}
 	description, ok := descriptions[routerIP]
 	if !ok {
-		return nil, nil
+		return nil, fmt.Errorf("router advertises UPnP but its port forwarding list cannot be queried")
 	}
 	service, ok := description.Device.WANConnection()
 	if !ok {
-		return nil, nil
+		return nil, fmt.Errorf("router advertises UPnP but its port forwarding list cannot be queried")
 	}
 	controlURL, ok := ssdp.ControlURL(description.Location, description.URLBase, service.ControlURL, routerIP)
 	if !ok {
-		return nil, nil
+		return nil, fmt.Errorf("router advertises UPnP but its port forwarding list cannot be queried")
 	}
 	queryContext, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
@@ -505,10 +512,20 @@ func makeFindings(
 		}
 	}
 
-	seenPortForwards := make(map[struct {
+	type portForwardKey struct {
 		client netip.Addr
 		port   int
-	}]struct{})
+	}
+	type portForwardGroup struct {
+		client netip.Addr
+		port   int
+		device string
+		id     string
+		level  report.Level
+		points int
+	}
+	groupIndexes := make(map[portForwardKey]int)
+	groups := make([]portForwardGroup, 0, len(portMappings))
 	for _, mapping := range portMappings {
 		if !mapping.Enabled {
 			continue
@@ -517,14 +534,7 @@ func makeFindings(
 		if err != nil || !internalIP.Is4() || !internalIP.IsPrivate() {
 			continue
 		}
-		key := struct {
-			client netip.Addr
-			port   int
-		}{client: internalIP, port: mapping.ExternalPort}
-		if _, exists := seenPortForwards[key]; exists {
-			continue
-		}
-		seenPortForwards[key] = struct{}{}
+		key := portForwardKey{client: internalIP, port: mapping.ExternalPort}
 		device := deviceNames[internalIP]
 		if device == "" {
 			device = sanitizeName(mapping.Description)
@@ -532,14 +542,28 @@ func makeFindings(
 		if device == "" {
 			device = internalIP.String()
 		}
-		id, level, points := "port_forward", report.Caution, 3
-		switch mapping.InternalPort {
-		case 21, 22, 23, 2323, 445, 3389, 5900:
-			id, level, points = "port_forward_risky", report.Danger, 20
+		group := portForwardGroup{
+			client: internalIP, port: mapping.ExternalPort, device: device,
+			id: "port_forward", level: report.Caution, points: 3,
 		}
+		if riskyPortForward(mapping) {
+			group.id, group.level, group.points = "port_forward_risky", report.Danger, 20
+		}
+		if index, exists := groupIndexes[key]; exists {
+			if group.points > groups[index].points {
+				groups[index].id = group.id
+				groups[index].level = group.level
+				groups[index].points = group.points
+			}
+			continue
+		}
+		groupIndexes[key] = len(groups)
+		groups = append(groups, group)
+	}
+	for _, group := range groups {
 		findings = append(findings, report.Finding{
-			ID: id, Level: level, Points: points, IP: internalIP.String(),
-			Device: device, Port: mapping.ExternalPort,
+			ID: group.id, Level: group.level, Points: group.points, IP: group.client.String(),
+			Device: group.device, Port: group.port,
 		})
 	}
 
@@ -563,6 +587,22 @@ func makeFindings(
 	}
 	report.Sort(findings)
 	return findings
+}
+
+func riskyPortForward(mapping ssdp.PortMapping) bool {
+	if !strings.EqualFold(mapping.Protocol, "TCP") {
+		return false
+	}
+	remoteHost := strings.TrimSpace(mapping.RemoteHost)
+	if remoteHost != "" && remoteHost != "*" && remoteHost != "0.0.0.0" {
+		return false
+	}
+	switch mapping.InternalPort {
+	case 21, 22, 23, 2323, 445, 3389, 5900:
+		return true
+	default:
+		return false
+	}
 }
 
 func routerUPnPIP(gateway netip.Addr, responses []ssdp.Response, descriptions map[netip.Addr]ssdp.Description) (netip.Addr, bool) {

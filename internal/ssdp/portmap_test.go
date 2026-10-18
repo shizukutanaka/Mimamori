@@ -72,7 +72,7 @@ func TestPortMappingsReturnsPartialEntriesAndError(t *testing.T) {
 }
 
 func TestPortMappingsEmptyList(t *testing.T) {
-	for _, code := range []int{713, 714, 402} {
+	for _, code := range []int{713, 714} {
 		t.Run(strconv.Itoa(code), func(t *testing.T) {
 			requests := 0
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -91,6 +91,25 @@ func TestPortMappingsEmptyList(t *testing.T) {
 				t.Fatalf("request count = %d, want 1", requests)
 			}
 		})
+	}
+}
+
+func TestPortMappingsErrorCode402(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		assertPortMappingRequest(t, r, 0)
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = io.WriteString(w, portMappingErrorXML(402))
+	}))
+	defer server.Close()
+
+	mappings, err := PortMappings(context.Background(), server.Client(), server.URL, testWANIPService)
+	if err == nil || len(mappings) != 0 {
+		t.Fatalf("PortMappings() = %#v, %v; want error with no mappings", mappings, err)
+	}
+	if requests != 1 {
+		t.Fatalf("request count = %d, want 1", requests)
 	}
 }
 

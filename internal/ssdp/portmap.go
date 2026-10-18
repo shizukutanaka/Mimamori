@@ -117,7 +117,7 @@ func PortMappings(ctx context.Context, client *http.Client, controlURL, serviceT
 			switch code, ok := upnpErrorCode(body); {
 			case ok && code == 713:
 				return mappings, nil
-			case ok && index == 0 && (code == 714 || code == 402):
+			case ok && index == 0 && code == 714:
 				return mappings, nil
 			}
 		}

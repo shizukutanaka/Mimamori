@@ -2,8 +2,10 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
+	"net/http"
 	"net/netip"
 	"strings"
 	"testing"
@@ -79,10 +81,34 @@ func TestPortForwardFindings(t *testing.T) {
 		{
 			name: "risky remote access",
 			mappings: []ssdp.PortMapping{{
-				ExternalPort: 44338, InternalPort: 3389, InternalClient: internalIP.String(), Enabled: true,
+				ExternalPort: 44338, Protocol: "TCP", InternalPort: 3389, InternalClient: internalIP.String(), Enabled: true,
 			}},
 			names:  map[netip.Addr]string{internalIP: "Office PC"},
 			wantID: "port_forward_risky", wantLevel: report.Danger, wantCount: 1, wantPort: 44338, wantName: "Office PC",
+		},
+		{
+			name: "restricted TCP remote host is caution",
+			mappings: []ssdp.PortMapping{{
+				ExternalPort: 44338, Protocol: "TCP", RemoteHost: "203.0.113.8", InternalPort: 3389, InternalClient: internalIP.String(), Enabled: true,
+			}},
+			names:  map[netip.Addr]string{internalIP: "Office PC"},
+			wantID: "port_forward", wantLevel: report.Caution, wantCount: 1, wantPort: 44338, wantName: "Office PC",
+		},
+		{
+			name: "UDP risky port is caution",
+			mappings: []ssdp.PortMapping{{
+				ExternalPort: 22, Protocol: "UDP", InternalPort: 22, InternalClient: internalIP.String(), Enabled: true,
+			}},
+			names:  map[netip.Addr]string{internalIP: "Office PC"},
+			wantID: "port_forward", wantLevel: report.Caution, wantCount: 1, wantPort: 22, wantName: "Office PC",
+		},
+		{
+			name: "unrestricted TCP risky port is danger",
+			mappings: []ssdp.PortMapping{{
+				ExternalPort: 3389, Protocol: "tCp", RemoteHost: "  ", InternalPort: 3389, InternalClient: internalIP.String(), Enabled: true,
+			}},
+			names:  map[netip.Addr]string{internalIP: "Office PC"},
+			wantID: "port_forward_risky", wantLevel: report.Danger, wantCount: 1, wantPort: 3389, wantName: "Office PC",
 		},
 		{
 			name: "ordinary forward",
@@ -100,6 +126,24 @@ func TestPortForwardFindings(t *testing.T) {
 			},
 			names:  map[netip.Addr]string{internalIP: "Game console"},
 			wantID: "port_forward", wantLevel: report.Caution, wantCount: 1, wantPort: 3074, wantName: "Game console",
+		},
+		{
+			name: "UDP then TCP keeps higher classification",
+			mappings: []ssdp.PortMapping{
+				{ExternalPort: 4000, Protocol: "UDP", InternalPort: 4000, InternalClient: internalIP.String(), Enabled: true},
+				{ExternalPort: 4000, Protocol: "TCP", InternalPort: 3389, InternalClient: internalIP.String(), Enabled: true},
+			},
+			names:  map[netip.Addr]string{internalIP: "Game console"},
+			wantID: "port_forward_risky", wantLevel: report.Danger, wantCount: 1, wantPort: 4000, wantName: "Game console",
+		},
+		{
+			name: "TCP then UDP keeps higher classification",
+			mappings: []ssdp.PortMapping{
+				{ExternalPort: 4000, Protocol: "TCP", InternalPort: 3389, InternalClient: internalIP.String(), Enabled: true},
+				{ExternalPort: 4000, Protocol: "UDP", InternalPort: 4000, InternalClient: internalIP.String(), Enabled: true},
+			},
+			names:  map[netip.Addr]string{internalIP: "Game console"},
+			wantID: "port_forward_risky", wantLevel: report.Danger, wantCount: 1, wantPort: 4000, wantName: "Game console",
 		},
 		{
 			name: "disabled mapping ignored",
@@ -151,6 +195,85 @@ func TestPortForwardFindings(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestFetchPortMappingsQueryability(t *testing.T) {
+	gateway := netip.MustParseAddr("192.168.1.1")
+	routerDescription := func(controlURL string) ssdp.Description {
+		description := ssdp.Description{
+			Device: ssdp.Device{
+				DeviceType: "urn:schemas-upnp-org:device:InternetGatewayDevice:1",
+			},
+			Location: "http://192.168.1.1:1900/description.xml",
+		}
+		if controlURL != "" {
+			description.Device.Services = []ssdp.Service{{
+				ServiceType: "urn:schemas-upnp-org:service:WANIPConnection:1",
+				ControlURL:  controlURL,
+			}}
+		}
+		return description
+	}
+
+	t.Run("no description", func(t *testing.T) {
+		mappings, err := fetchPortMappings(context.Background(), nil, gateway, nil, nil)
+		if err != nil || mappings != nil {
+			t.Fatalf("fetchPortMappings() = %#v, %v; want nil, nil", mappings, err)
+		}
+	})
+
+	t.Run("non-IGD description without IGD responder", func(t *testing.T) {
+		description := routerDescription("")
+		description.Device.DeviceType = "urn:schemas-upnp-org:device:Basic:1"
+		mappings, err := fetchPortMappings(context.Background(), nil, gateway, nil, map[netip.Addr]ssdp.Description{
+			gateway: description,
+		})
+		if err != nil || mappings != nil {
+			t.Fatalf("fetchPortMappings() = %#v, %v; want nil, nil", mappings, err)
+		}
+	})
+
+	t.Run("IGD without WAN service", func(t *testing.T) {
+		_, err := fetchPortMappings(context.Background(), nil, gateway, nil, map[netip.Addr]ssdp.Description{
+			gateway: routerDescription(""),
+		})
+		if err == nil || err.Error() != "router advertises UPnP but its port forwarding list cannot be queried" {
+			t.Fatalf("fetchPortMappings() error = %v", err)
+		}
+	})
+
+	for _, controlURL := range []string{
+		"http://8.8.8.8/control",
+		"http://192.168.1.2/control",
+	} {
+		t.Run(controlURL, func(t *testing.T) {
+			requests := 0
+			client := &http.Client{Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
+				requests++
+				return &http.Response{
+					StatusCode: http.StatusInternalServerError,
+					Header:     make(http.Header),
+					Body:       io.NopCloser(strings.NewReader("")),
+					Request:    request,
+				}, nil
+			})}
+			_, err := fetchPortMappings(context.Background(), client, gateway, nil, map[netip.Addr]ssdp.Description{
+				gateway: routerDescription(controlURL),
+			})
+			if err == nil || err.Error() != "router advertises UPnP but its port forwarding list cannot be queried" {
+				t.Fatalf("fetchPortMappings() error = %v", err)
+			}
+			if requests != 0 {
+				t.Fatalf("HTTP requests = %d, want 0", requests)
+			}
+		})
+	}
+}
+
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (roundTripper roundTripperFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return roundTripper(request)
 }
 
 func TestRouterUPnPAttribution(t *testing.T) {
