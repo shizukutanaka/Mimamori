@@ -149,6 +149,54 @@ func TestPortForwardFindings(t *testing.T) {
 			wantID: "port_forward_risky", wantLevel: report.Danger, wantCount: 1, wantPort: 5555, wantName: "Android TV",
 		},
 		{
+			name: "unrestricted TCP RTSP port is camera danger",
+			mappings: []ssdp.PortMapping{{
+				ExternalPort: 554, Protocol: "TCP", InternalPort: 554, InternalClient: internalIP.String(), Enabled: true,
+			}},
+			names:  map[netip.Addr]string{internalIP: "Living room camera"},
+			wantID: "forward_camera", wantLevel: report.Danger, wantCount: 1, wantPort: 554, wantName: "Living room camera",
+		},
+		{
+			name: "unrestricted TCP Dahua DVR port is camera danger",
+			mappings: []ssdp.PortMapping{{
+				ExternalPort: 37777, Protocol: "TCP", InternalPort: 37777, InternalClient: internalIP.String(), Enabled: true,
+			}},
+			names:  map[netip.Addr]string{internalIP: "DVR"},
+			wantID: "forward_camera", wantLevel: report.Danger, wantCount: 1, wantPort: 37777, wantName: "DVR",
+		},
+		{
+			name: "unrestricted TCP Xiongmai DVR port is camera danger",
+			mappings: []ssdp.PortMapping{{
+				ExternalPort: 34567, Protocol: "TCP", InternalPort: 34567, InternalClient: internalIP.String(), Enabled: true,
+			}},
+			names:  map[netip.Addr]string{internalIP: "DVR"},
+			wantID: "forward_camera", wantLevel: report.Danger, wantCount: 1, wantPort: 34567, wantName: "DVR",
+		},
+		{
+			name: "UDP RTSP port is not risky",
+			mappings: []ssdp.PortMapping{{
+				ExternalPort: 554, Protocol: "UDP", InternalPort: 554, InternalClient: internalIP.String(), Enabled: true,
+			}},
+			names:  map[netip.Addr]string{internalIP: "Camera"},
+			wantID: "port_forward", wantLevel: report.Caution, wantCount: 1, wantPort: 554, wantName: "Camera",
+		},
+		{
+			name: "restricted Dahua port is not risky",
+			mappings: []ssdp.PortMapping{{
+				ExternalPort: 37777, Protocol: "TCP", RemoteHost: "203.0.113.8", InternalPort: 37777, InternalClient: internalIP.String(), Enabled: true,
+			}},
+			names:  map[netip.Addr]string{internalIP: "DVR"},
+			wantID: "port_forward", wantLevel: report.Caution, wantCount: 1, wantPort: 37777, wantName: "DVR",
+		},
+		{
+			name: "TCP 8000 is not risky",
+			mappings: []ssdp.PortMapping{{
+				ExternalPort: 8000, Protocol: "TCP", InternalPort: 8000, InternalClient: internalIP.String(), Enabled: true,
+			}},
+			names:  map[netip.Addr]string{internalIP: "Camera"},
+			wantID: "port_forward", wantLevel: report.Caution, wantCount: 1, wantPort: 8000, wantName: "Camera",
+		},
+		{
 			name: "ordinary forward",
 			mappings: []ssdp.PortMapping{{
 				ExternalPort: 3074, InternalPort: 3074, InternalClient: internalIP.String(), Enabled: true,
@@ -219,7 +267,7 @@ func TestPortForwardFindings(t *testing.T) {
 			)
 			portFindings := make([]report.Finding, 0)
 			for _, finding := range findings {
-				if finding.ID == "port_forward" || finding.ID == "port_forward_risky" {
+				if finding.ID == "port_forward" || finding.ID == "port_forward_risky" || finding.ID == "forward_camera" {
 					portFindings = append(portFindings, finding)
 				}
 			}
@@ -237,6 +285,13 @@ func TestPortForwardFindings(t *testing.T) {
 				}
 				if finding.Points != wantPoints || finding.IP != internalIP.String() {
 					t.Fatalf("port forwarding finding = %#v", finding)
+				}
+				if finding.ID == "forward_camera" {
+					wantMessage := i18n.T("en", "forward_camera", test.wantName, test.wantPort)
+					wantFix := i18n.T("en", "forward_camera_fix")
+					if finding.Message != wantMessage || finding.Fix != wantFix {
+						t.Fatalf("camera forward text = %#v, want message %q and fix %q", finding, wantMessage, wantFix)
+					}
 				}
 			}
 		})
