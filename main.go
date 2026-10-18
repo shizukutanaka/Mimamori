@@ -225,6 +225,7 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 			neighbors = mergeNeighbors(neighbors, refreshed)
 		}
 	}
+	opened = append(opened, unauthenticatedRTSP(ctx, scanTargets)...)
 	canReport, forceIncomplete := reportable(scanObservedNetwork(neighbors, discovery.responses, opened), wifiFs)
 	if forceIncomplete {
 		if !incomplete && !*jsonOutput {
@@ -640,6 +641,8 @@ func makeFindings(
 			findings = append(findings, report.Finding{ID: "vnc_open", Level: report.Caution, Points: 8, IP: item.IP.String(), Device: name})
 		case 5555:
 			findings = append(findings, report.Finding{ID: "adb_open", Level: report.Caution, Points: 8, IP: item.IP.String(), Device: name})
+		case 554:
+			findings = append(findings, report.Finding{ID: "rtsp_noauth", Level: report.Caution, Points: 8, IP: item.IP.String(), Device: name})
 		}
 	}
 	for ip, isNew := range newDevices {
@@ -720,6 +723,12 @@ func makeFindings(
 			finding.Message = i18n.T(lang, finding.ID, finding.Device)
 		case "port_forward", "port_forward_risky":
 			finding.Message = i18n.T(lang, finding.ID, finding.Device, finding.Port)
+		}
+	}
+	for i := range findings {
+		finding := &findings[i]
+		if finding.ID == "rtsp_noauth" {
+			finding.Message = i18n.T(lang, finding.ID, finding.Device)
 		}
 	}
 	return findings
