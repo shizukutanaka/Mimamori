@@ -1,6 +1,6 @@
 # Mimamori — Home Safety Check
 
-Mimamori answers a simple question: **“Is my home network safe right now?”** It looks for a few high-impact risks and explains what to do, rather than presenting packet details. It is a single static Go binary for Windows, macOS, and Linux; it needs no administrator/root access.
+Mimamori answers a simple question: **“Is my home network safe right now?”** It looks for a few high-impact risks and explains what to do, rather than presenting packet details. It is a single static Go binary for Windows, macOS, and Linux; it needs no administrator/root access. It also checks whether another private address uses the router's MAC address, a possible sign of ARP spoofing.
 
 It checks devices visible in the local neighbor table, the default gateway, UPnP device descriptions, a small set of risky services (Telnet, FTP, VNC, and Android Debug Bridge (ADB) on TCP port 5555), and the connected Wi-Fi security using read-only operating-system tools. It also tries those risky-service ports on every address in the home subnet (up to 254), covering devices this PC has not talked to; it only attempts connections and changes nothing. Router UPnP port forwards are read with a read-only query. The score ranges from 0 to 100; findings explain the recommended fix and points recovered.
 
@@ -83,7 +83,7 @@ To add a language, add a catalog file in `internal/i18n` and list its code in `S
 
 # Mimamori — 家の安全診断
 
-Mimamori は「今、家のネットワークは安全だろうか？」という疑問に答える診断ツールです。通信の細かな情報ではなく、特に注意が必要な状態と対処方法をわかりやすく伝えます。Windows・macOS・Linux で動く、管理者権限がいらない単一の Go バイナリです。
+Mimamori は「今、家のネットワークは安全だろうか？」という疑問に答える診断ツールです。通信の細かな情報ではなく、特に注意が必要な状態と対処方法をわかりやすく伝えます。Windows・macOS・Linux で動く、管理者権限がいらない単一の Go バイナリです。ルーターと同じ MAC アドレスを使う別のプライベート IP アドレスがないかも確認し、ARP スプーフィングの兆候を調べます。
 
 近くで確認できる機器、標準ゲートウェイ、UPnP の機器情報、危険につながりやすい Telnet・FTP・VNC・Android Debug Bridge（ADB、TCP 5555）の入口に加え、OS の機能だけを使って接続中 Wi-Fi の安全方式も読み取り専用で確認します。さらに、自宅サブネット内の全アドレス（最大 254 件）にも危険なサービスのポートへの接続を試み、この PC と通信したことがない機器も確認します。接続を試みるだけで、設定は変更しません。ルーターの UPnP ポート転送も読み取り専用の問い合わせで調べます。点数は 0〜100 点で、見つかった問題ごとに対処方法と回復する点数を表示します。
 
