@@ -25,6 +25,7 @@ import (
 	"github.com/shizukutanaka/Mimamori/internal/probe"
 	"github.com/shizukutanaka/Mimamori/internal/report"
 	"github.com/shizukutanaka/Mimamori/internal/ssdp"
+	"github.com/shizukutanaka/Mimamori/internal/wifi"
 )
 
 var version = "dev"
@@ -74,6 +75,11 @@ type gatewayResult struct {
 type ssdpResult struct {
 	responses []ssdp.Response
 	err       error
+}
+
+type wifiResult struct {
+	security wifi.Security
+	err      error
 }
 
 type descriptionResult struct {
@@ -141,6 +147,7 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 	arpCh := make(chan discoveryResult, 1)
 	gatewayCh := make(chan gatewayResult, 1)
 	ssdpCh := make(chan ssdpResult, 1)
+	wifiCh := make(chan wifiResult, 1)
 	go func() {
 		neighbors, err := lan.ReadARP(ctx)
 		arpCh <- discoveryResult{neighbors: neighbors, err: err}
@@ -153,10 +160,15 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 		responses, err := ssdp.Discover(ctx, *wait)
 		ssdpCh <- ssdpResult{responses: responses, err: err}
 	}()
+	go func() {
+		security, err := wifi.Current(ctx)
+		wifiCh <- wifiResult{security: security, err: err}
+	}()
 
 	arp := <-arpCh
 	gateway := <-gatewayCh
 	discovery := <-ssdpCh
+	wifiCheck := <-wifiCh
 	if arp.err != nil {
 		fmt.Fprintf(stderr, "warning: cannot read the neighbor table: %v\n", arp.err)
 	}
@@ -168,6 +180,9 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 	}
 	if discovery.err != nil {
 		fmt.Fprintf(stderr, "warning: UPnP discovery failed: %v\n", discovery.err)
+	}
+	if wifiCheck.err != nil {
+		fmt.Fprintf(stderr, "warning: cannot determine Wi-Fi security: %v\n", wifiCheck.err)
 	}
 
 	descriptions, descriptionErrors := fetchDescriptions(ctx, discovery.responses)
@@ -234,6 +249,8 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 	}
 
 	findings := makeFindings(opened, discovery.responses, gatewayIP, descriptions, deviceNames, newDevices, lang)
+	findings = append(findings, wifiFindings(wifiCheck.security, lang)...)
+	report.Sort(findings)
 	status := report.Status(report.Score(findings), findings)
 	result := output{
 		Version: version, Score: report.Score(findings), Status: status, FirstRun: firstRun, Incomplete: incomplete,
@@ -505,8 +522,27 @@ func makeFindings(
 			finding.Message = i18n.T(lang, finding.ID, finding.Device)
 		}
 	}
-	report.Sort(findings)
 	return findings
+}
+
+func wifiFindings(security wifi.Security, lang string) []report.Finding {
+	id := ""
+	level := report.Level("")
+	points := 0
+	switch security {
+	case wifi.Open:
+		id, level, points = "wifi_open", report.Danger, 25
+	case wifi.WEP:
+		id, level, points = "wifi_wep", report.Danger, 25
+	case wifi.WPA1orTKIP:
+		id, level, points = "wifi_weak", report.Caution, 8
+	default:
+		return nil
+	}
+	return []report.Finding{{
+		ID: id, Level: level, Points: points,
+		Message: i18n.T(lang, id), Fix: i18n.T(lang, id+"_fix"),
+	}}
 }
 
 func renderText(writer io.Writer, result output, lang string) {
