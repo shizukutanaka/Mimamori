@@ -7,7 +7,9 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 )
@@ -61,7 +63,11 @@ func Current(ctx context.Context) (Security, error) {
 	case "darwin":
 		return ParseMacOS(output), nil
 	case "linux":
-		return ParseNmcli(string(output)), nil
+		security := ParseNmcli(string(output))
+		if security == Unknown {
+			return wpaCliSecurity(commandContext)
+		}
+		return security, nil
 	case "windows":
 		return ParseNetsh(string(output)), nil
 	default:
@@ -143,7 +149,76 @@ func ParseNmcli(text string) Security {
 }
 
 func wpaCliSecurity(ctx context.Context) (Security, error) {
-	command := exec.CommandContext(ctx, "wpa_cli", "status")
+	interfaces := supplicantInterfaces([]string{"/run/wpa_supplicant", "/var/run/wpa_supplicant"})
+	if len(interfaces) == 0 {
+		return wpaCliStatus(ctx, "status")
+	}
+
+	results := make([]Security, 0, len(interfaces))
+	for _, iface := range interfaces {
+		security, err := wpaCliStatus(ctx, "-p", iface.dir, "-i", iface.name, "status")
+		if err != nil {
+			return Unknown, err
+		}
+		results = append(results, security)
+	}
+	return worstSecurity(results), nil
+}
+
+type supplicantInterface struct {
+	dir  string
+	name string
+}
+
+func supplicantInterfaces(dirs []string) []supplicantInterface {
+	seenDirs := make(map[string]struct{}, len(dirs))
+	var interfaces []supplicantInterface
+	for _, dir := range dirs {
+		resolvedDir, err := filepath.EvalSymlinks(dir)
+		if err != nil {
+			continue
+		}
+		if _, ok := seenDirs[resolvedDir]; ok {
+			continue
+		}
+		seenDirs[resolvedDir] = struct{}{}
+
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, entry := range entries {
+			name := entry.Name()
+			if entry.IsDir() || strings.HasPrefix(name, "p2p-dev-") {
+				continue
+			}
+			interfaces = append(interfaces, supplicantInterface{dir: dir, name: name})
+		}
+	}
+	sort.Slice(interfaces, func(i, j int) bool {
+		if interfaces[i].dir != interfaces[j].dir {
+			return interfaces[i].dir < interfaces[j].dir
+		}
+		return interfaces[i].name < interfaces[j].name
+	})
+	return interfaces
+}
+
+func worstSecurity(results []Security) Security {
+	worst := Unknown
+	for _, result := range results {
+		if result == Unknown {
+			continue
+		}
+		if worst == Unknown || result < worst {
+			worst = result
+		}
+	}
+	return worst
+}
+
+func wpaCliStatus(ctx context.Context, args ...string) (Security, error) {
+	command := exec.CommandContext(ctx, "wpa_cli", args...)
 	command.Env = withLCAllC(os.Environ())
 
 	var errorOutput bytes.Buffer

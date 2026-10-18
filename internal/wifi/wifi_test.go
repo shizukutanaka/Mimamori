@@ -1,6 +1,8 @@
 package wifi
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -281,5 +283,65 @@ Authentication         : WPA2-Personal
 Cipher                 : CCMP`
 	if NetshNeedsLocation(connected) {
 		t.Fatal("NetshNeedsLocation(connected interface) = true, want false")
+	}
+}
+
+func TestWorstSecurity(t *testing.T) {
+	tests := []struct {
+		name    string
+		results []Security
+		want    Security
+	}{
+		{name: "empty"},
+		{name: "all unknown", results: []Security{Unknown, Unknown}},
+		{name: "unknown and modern", results: []Security{Unknown, Modern}, want: Modern},
+		{name: "modern and open", results: []Security{Modern, Open}, want: Open},
+		{name: "WEP and WPA1", results: []Security{WEP, WPA1orTKIP}, want: WEP},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := worstSecurity(test.results); got != test.want {
+				t.Fatalf("worstSecurity(%v) = %v, want %v", test.results, got, test.want)
+			}
+		})
+	}
+}
+
+func TestSupplicantInterfaces(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "run", "wpa_supplicant")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"wlan0", "wlan1", "p2p-dev-wlan0"} {
+		if err := os.WriteFile(filepath.Join(dir, name), nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Mkdir(filepath.Join(dir, "nested"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	symlink := filepath.Join(root, "var", "run", "wpa_supplicant")
+	if err := os.MkdirAll(filepath.Dir(symlink), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(dir, symlink); err != nil {
+		t.Fatal(err)
+	}
+	missing := filepath.Join(root, "missing", "wpa_supplicant")
+
+	got := supplicantInterfaces([]string{dir, symlink, missing})
+	want := []supplicantInterface{
+		{dir: dir, name: "wlan0"},
+		{dir: dir, name: "wlan1"},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("supplicantInterfaces() = %#v, want %#v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("supplicantInterfaces()[%d] = %#v, want %#v", i, got[i], want[i])
+		}
 	}
 }
