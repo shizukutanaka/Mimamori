@@ -12,6 +12,8 @@ import (
 
 const encodedWildcardName = "CKAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 
+var afterNameQuerySend = func() {}
+
 func ParseNodeStatus(b []byte) (string, bool) {
 	if !validNodeStatusHeader(b) {
 		return "", false
@@ -84,9 +86,11 @@ func names(
 	}
 	defer conn.Close()
 
-	deadline := time.Now().Add(timeout)
 	queries := make(map[netip.Addr]uint16)
 	for _, host := range hosts {
+		if ctx.Err() != nil {
+			break
+		}
 		if !host.Is4() || !accept(host) {
 			continue
 		}
@@ -102,12 +106,14 @@ func names(
 		destination := net.UDPAddrFromAddrPort(netip.AddrPortFrom(host, uint16(port)))
 		if _, err := conn.WriteTo(packet, destination); err == nil {
 			queries[host] = transactionID
+			afterNameQuerySend()
 		}
 	}
 	if len(queries) == 0 {
 		return result
 	}
 
+	deadline := time.Now().Add(timeout)
 	if ctxDeadline, ok := ctx.Deadline(); ok && ctxDeadline.Before(deadline) {
 		deadline = ctxDeadline
 	}

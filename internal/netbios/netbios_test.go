@@ -150,6 +150,36 @@ func TestNames(t *testing.T) {
 		}
 	})
 
+	t.Run("reply window starts after all queries are sent", func(t *testing.T) {
+		previousHook := afterNameQuerySend
+		sends := 0
+		afterNameQuerySend = func() {
+			sends++
+			if sends == 1 {
+				time.Sleep(50 * time.Millisecond)
+			}
+		}
+		t.Cleanup(func() { afterNameQuerySend = previousHook })
+
+		port := startResponder(t, nil, func(query []byte) []byte {
+			return makeNodeStatusResponse(
+				binary.BigEndian.Uint16(query[:2]),
+				0x8000,
+				0x0021,
+				1,
+				[]testNameEntry{{name: "DESKTOP-AB12CD", suffix: 0}},
+			)
+		})
+		hosts := []netip.Addr{host, netip.MustParseAddr("127.0.0.2")}
+		got := names(context.Background(), hosts, port, netip.Addr.IsLoopback, 10*time.Millisecond)
+		if got[host] != "DESKTOP-AB12CD" {
+			t.Fatalf("names() = %v, want %q", got, "DESKTOP-AB12CD")
+		}
+		if sends != len(hosts) {
+			t.Fatalf("sent %d queries, want %d", sends, len(hosts))
+		}
+	})
+
 	t.Run("wrong transaction ID is ignored", func(t *testing.T) {
 		port := startResponder(t, nil, func(query []byte) []byte {
 			return makeNodeStatusResponse(
