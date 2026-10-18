@@ -121,6 +121,91 @@ func TestDiscoverUnicastSearchMessage(t *testing.T) {
 	}
 }
 
+func TestDiscoverDelayedUnicast(t *testing.T) {
+	target, _, _ := startSSDPTestResponder(t, func(int, []byte) bool { return true })
+	unicast := make(chan *net.UDPAddr)
+	go func() {
+		time.Sleep(150 * time.Millisecond)
+		unicast <- target
+		close(unicast)
+	}()
+
+	responses, err := discoverTargets(
+		context.Background(),
+		400*time.Millisecond,
+		nil,
+		unicast,
+		netip.Addr.IsLoopback,
+		20*time.Millisecond,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(responses) != 1 {
+		t.Fatalf("discoverTargets() returned %d responses, want 1", len(responses))
+	}
+}
+
+func TestDiscoverNilUnicast(t *testing.T) {
+	target, _, _ := startSSDPTestResponder(t, func(int, []byte) bool { return true })
+
+	responses, err := discoverTargets(
+		context.Background(),
+		60*time.Millisecond,
+		target,
+		nil,
+		netip.Addr.IsLoopback,
+		20*time.Millisecond,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(responses) != 1 {
+		t.Fatalf("discoverTargets() returned %d responses, want 1", len(responses))
+	}
+}
+
+func TestDiscoverNeverClosedUnicastReturnsAtDeadline(t *testing.T) {
+	unicast := make(chan *net.UDPAddr)
+	start := time.Now()
+	_, err := discoverTargets(
+		context.Background(),
+		40*time.Millisecond,
+		nil,
+		unicast,
+		netip.Addr.IsLoopback,
+		20*time.Millisecond,
+	)
+	if err == nil {
+		t.Fatal("discoverTargets() error = nil, want no-send error")
+	}
+	if elapsed := time.Since(start); elapsed > 300*time.Millisecond {
+		t.Fatalf("discoverTargets() took %s, want return near deadline", elapsed)
+	}
+}
+
+func TestDiscoverCancellationAfterRetrySend(t *testing.T) {
+	target, _, _ := startSSDPTestResponder(t, func(int, []byte) bool { return true })
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	previous := afterRetrySend
+	t.Cleanup(func() { afterRetrySend = previous })
+	afterRetrySend = cancel
+
+	start := time.Now()
+	_, _ = discoverTargets(
+		ctx,
+		time.Second,
+		target,
+		nil,
+		netip.Addr.IsLoopback,
+		20*time.Millisecond,
+	)
+	if elapsed := time.Since(start); elapsed > 500*time.Millisecond {
+		t.Fatalf("discoverTargets() took %s after cancellation, want under 500ms", elapsed)
+	}
+}
+
 func startSSDPTestResponder(
 	t *testing.T,
 	respond func(int, []byte) bool,
