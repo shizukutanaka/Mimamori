@@ -21,7 +21,7 @@ const (
 )
 
 func Current(ctx context.Context) (Security, error) {
-	commandContext, cancel := context.WithTimeout(ctx, 5*time.Second)
+	commandContext, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 
 	var command *exec.Cmd
