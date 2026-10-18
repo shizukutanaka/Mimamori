@@ -802,6 +802,8 @@ func makeFindings(
 			switch mapping.InternalPort {
 			case 554, 37777, 34567:
 				group.id = "forward_camera"
+			case 1433, 3306, 5432, 6379, 9200, 27017:
+				group.id = "forward_database"
 			}
 		}
 		if index, exists := groupIndexes[key]; exists {
@@ -837,7 +839,7 @@ func makeFindings(
 		switch finding.ID {
 		case "telnet_open", "ftp_open", "vnc_open", "adb_open", "new_device", "new_device_private":
 			finding.Message = i18n.T(lang, finding.ID, finding.Device)
-		case "port_forward", "port_forward_risky", "forward_camera":
+		case "port_forward", "port_forward_risky", "forward_camera", "forward_database":
 			finding.Message = i18n.T(lang, finding.ID, finding.Device, finding.Port)
 		}
 	}
@@ -853,7 +855,7 @@ func riskyPortForward(mapping ssdp.PortMapping) bool {
 		return false
 	}
 	switch mapping.InternalPort {
-	case 21, 22, 23, 445, 554, 2323, 3389, 5555, 5900, 34567, 37777:
+	case 21, 22, 23, 135, 139, 445, 554, 2323, 2375, 3389, 5555, 5800, 5900, 1433, 3306, 5432, 6379, 9200, 27017, 34567, 37777:
 		return true
 	default:
 		return false
