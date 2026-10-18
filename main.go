@@ -264,7 +264,7 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 		neighborByIP[neighbor.IP] = neighbor
 	}
 	deviceNames := make(map[netip.Addr]string, len(reportedHosts))
-	newDevices := make(map[netip.Addr]bool)
+	newDeviceFindings := make(map[netip.Addr]string)
 	now := time.Now().UTC()
 	for _, host := range reportedHosts {
 		neighbor := neighborByIP[host]
@@ -274,18 +274,20 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 			continue
 		}
 		isNew := store.Observe(neighbor.MAC, host.String(), name, now)
-		newDevices[host] = !firstRun && isNew
+		if findingID := newDeviceFindingID(firstRun, isNew, neighbor.MAC); findingID != "" {
+			newDeviceFindings[host] = findingID
+		}
 	}
 
 	devices := make([]deviceOutput, 0, len(reportedHosts))
 	for _, host := range reportedHosts {
 		neighbor := neighborByIP[host]
 		devices = append(devices, deviceOutput{
-			IP: host.String(), MAC: neighbor.MAC, Name: deviceNames[host], New: newDevices[host],
+			IP: host.String(), MAC: neighbor.MAC, Name: deviceNames[host], New: newDeviceFindings[host] != "",
 		})
 	}
 
-	findings := makeFindings(opened, discovery.responses, gatewayIP, descriptions, deviceNames, newDevices, portMappings, lang)
+	findings := makeFindings(opened, discovery.responses, gatewayIP, descriptions, deviceNames, newDeviceFindings, portMappings, lang)
 	findings = append(findings, wifiFs...)
 	report.Sort(findings)
 	status := report.Status(report.Score(findings), findings)
@@ -303,6 +305,7 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 		return finish(1)
 	}
 	if shouldSaveHistory(true, firstRun, store, loadState) {
+		store.Prune(now, 30*24*time.Hour, lan.IsRandomizedMAC)
 		if err := baseline.Save(*statePath, store); err != nil {
 			fmt.Fprintf(stderr, "warning: cannot save device history: %v\n", err)
 			return finish(1)
@@ -613,13 +616,23 @@ func sanitizeName(s string) string {
 	return name
 }
 
+func newDeviceFindingID(firstRun, isNew bool, mac string) string {
+	if firstRun || !isNew {
+		return ""
+	}
+	if lan.IsRandomizedMAC(mac) {
+		return "new_device_private"
+	}
+	return "new_device"
+}
+
 func makeFindings(
 	opened []probe.Open,
 	responses []ssdp.Response,
 	gateway netip.Addr,
 	descriptions map[netip.Addr]ssdp.Description,
 	deviceNames map[netip.Addr]string,
-	newDevices map[netip.Addr]bool,
+	newDeviceFindings map[netip.Addr]string,
 	portMappings []ssdp.PortMapping,
 	lang string,
 ) []report.Finding {
@@ -642,9 +655,9 @@ func makeFindings(
 			findings = append(findings, report.Finding{ID: "adb_open", Level: report.Caution, Points: 8, IP: item.IP.String(), Device: name})
 		}
 	}
-	for ip, isNew := range newDevices {
-		if isNew {
-			findings = append(findings, report.Finding{ID: "new_device", Level: report.Caution, Points: 3, IP: ip.String(), Device: deviceNames[ip]})
+	for ip, findingID := range newDeviceFindings {
+		if findingID != "" {
+			findings = append(findings, report.Finding{ID: findingID, Level: report.Caution, Points: 3, IP: ip.String(), Device: deviceNames[ip]})
 		}
 	}
 
@@ -716,7 +729,7 @@ func makeFindings(
 		finding.Message = i18n.T(lang, finding.ID)
 		finding.Fix = i18n.T(lang, finding.ID+"_fix")
 		switch finding.ID {
-		case "telnet_open", "ftp_open", "vnc_open", "adb_open", "new_device":
+		case "telnet_open", "ftp_open", "vnc_open", "adb_open", "new_device", "new_device_private":
 			finding.Message = i18n.T(lang, finding.ID, finding.Device)
 		case "port_forward", "port_forward_risky":
 			finding.Message = i18n.T(lang, finding.ID, finding.Device, finding.Port)
