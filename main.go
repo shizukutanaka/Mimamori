@@ -426,7 +426,7 @@ func mergeHosts(hosts, swept []netip.Addr) []netip.Addr {
 func mergeNeighbors(original, refreshed []lan.Neighbor) []lan.Neighbor {
 	seen := make(map[netip.Addr]struct{}, len(original)+len(refreshed))
 	merged := make([]lan.Neighbor, 0, len(original)+len(refreshed))
-	for _, list := range [][]lan.Neighbor{original, refreshed} {
+	for _, list := range [][]lan.Neighbor{refreshed, original} {
 		for _, neighbor := range list {
 			if _, exists := seen[neighbor.IP]; exists {
 				continue
@@ -448,7 +448,7 @@ func deviceHosts(neighbors []lan.Neighbor, gateway netip.Addr, responses []ssdp.
 			openedHosts = append(openedHosts, item.IP)
 		}
 	}
-	return mergeHosts(openedHosts, collectHosts(neighbors, gateway, responses))
+	return mergeHosts(collectHosts(neighbors, gateway, responses), openedHosts)
 }
 
 func newUPnPHTTPClient() *http.Client {
