@@ -25,7 +25,7 @@ const (
 var ErrLocationPermission = errors.New("Windows location permission is required to read Wi-Fi security")
 
 func Current(ctx context.Context) (Security, error) {
-	commandContext, cancel := context.WithTimeout(ctx, 5*time.Second)
+	commandContext, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 
 	var command *exec.Cmd

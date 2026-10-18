@@ -144,6 +144,8 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 		}
 	}
 
+	printScanningNotice(stderr, lang, *jsonOutput)
+
 	ctx := context.Background()
 	arpCh := make(chan discoveryResult, 1)
 	gatewayCh := make(chan gatewayResult, 1)
@@ -315,6 +317,12 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 	return finish(0)
 }
 
+func printScanningNotice(writer io.Writer, lang string, jsonOutput bool) {
+	if !jsonOutput {
+		fmt.Fprintln(writer, i18n.T(lang, "scanning_notice"))
+	}
+}
+
 func scanObservedNetwork(neighbors []lan.Neighbor, responses []ssdp.Response, opened []probe.Open) bool {
 	return len(neighbors) > 0 || len(responses) > 0 || len(opened) > 0
 }
@@ -428,7 +436,7 @@ func mergeHosts(hosts, swept []netip.Addr) []netip.Addr {
 func mergeNeighbors(original, refreshed []lan.Neighbor) []lan.Neighbor {
 	seen := make(map[netip.Addr]struct{}, len(original)+len(refreshed))
 	merged := make([]lan.Neighbor, 0, len(original)+len(refreshed))
-	for _, list := range [][]lan.Neighbor{original, refreshed} {
+	for _, list := range [][]lan.Neighbor{refreshed, original} {
 		for _, neighbor := range list {
 			if _, exists := seen[neighbor.IP]; exists {
 				continue
@@ -450,7 +458,7 @@ func deviceHosts(neighbors []lan.Neighbor, gateway netip.Addr, responses []ssdp.
 			openedHosts = append(openedHosts, item.IP)
 		}
 	}
-	return mergeHosts(openedHosts, collectHosts(neighbors, gateway, responses))
+	return mergeHosts(collectHosts(neighbors, gateway, responses), openedHosts)
 }
 
 func newUPnPHTTPClient() *http.Client {

@@ -407,6 +407,35 @@ func TestRunPauseMode(t *testing.T) {
 	}
 }
 
+func TestPrintScanningNotice(t *testing.T) {
+	const notice = "家のネットワークを確認しています。少し時間がかかります…"
+	var textOutput bytes.Buffer
+	printScanningNotice(&textOutput, "ja", false)
+	if got, want := textOutput.String(), notice+"\n"; got != want {
+		t.Fatalf("text scanning notice = %q, want %q", got, want)
+	}
+
+	var jsonOutput bytes.Buffer
+	printScanningNotice(&jsonOutput, "ja", true)
+	if jsonOutput.Len() != 0 {
+		t.Fatalf("JSON scanning notice = %q, want empty", jsonOutput.String())
+	}
+}
+
+func TestRunVersionOutputUnchanged(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	result := run([]string{"--version"}, &stdout, &stderr)
+	if result.code != 0 {
+		t.Fatalf("run(--version) code = %d, want 0", result.code)
+	}
+	if got, want := stdout.String(), "Mimamori "+version+"\n"; got != want {
+		t.Fatalf("run(--version) stdout = %q, want %q", got, want)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("run(--version) stderr = %q, want empty", stderr.String())
+	}
+}
+
 func TestCollectHostsFiltersAndCaps(t *testing.T) {
 	neighbors := make([]lan.Neighbor, 1025)
 	for i := range neighbors {
@@ -471,7 +500,7 @@ func TestMergeNeighborsOriginalWinsAndRefreshAdds(t *testing.T) {
 		[]lan.Neighbor{{IP: ip1, MAC: "bb:bb:bb:bb:bb:01"}, {IP: ip3, MAC: "bb:bb:bb:bb:bb:03"}},
 	)
 	want := []lan.Neighbor{
-		{IP: ip1, MAC: "aa:aa:aa:aa:aa:01"},
+		{IP: ip1, MAC: "bb:bb:bb:bb:bb:01"},
 		{IP: ip2, MAC: "aa:aa:aa:aa:aa:02"},
 		{IP: ip3, MAC: "bb:bb:bb:bb:bb:03"},
 	}
@@ -506,6 +535,31 @@ func TestDeviceHostsIncludesOnlyObservedSweptHosts(t *testing.T) {
 	for i := range want {
 		if got[i] != want[i] {
 			t.Fatalf("deviceHosts()[%d] = %s, want %s", i, got[i], want[i])
+		}
+	}
+}
+
+func TestDeviceHostsKeepsObservedHostsAtCap(t *testing.T) {
+	neighbors := make([]lan.Neighbor, 0, 1000)
+	for i := 0; i < 1000; i++ {
+		ip := netip.AddrFrom4([4]byte{10, 0, byte(i / 250), byte(i%250 + 1)})
+		neighbors = append(neighbors, lan.Neighbor{IP: ip, MAC: "aa:bb:cc:dd:ee:ff"})
+	}
+	opened := make([]probe.Open, 0, 100)
+	for i := 0; i < 100; i++ {
+		opened = append(opened, probe.Open{IP: netip.AddrFrom4([4]byte{10, 1, 0, byte(i + 1)}), Port: 21})
+	}
+	got := deviceHosts(neighbors, netip.Addr{}, nil, opened)
+	if len(got) != maxScanHosts {
+		t.Fatalf("deviceHosts() returned %d hosts, want %d", len(got), maxScanHosts)
+	}
+	present := make(map[netip.Addr]bool, len(got))
+	for _, host := range got {
+		present[host] = true
+	}
+	for _, neighbor := range neighbors {
+		if !present[neighbor.IP] {
+			t.Fatalf("observed neighbor %s was dropped at the cap", neighbor.IP)
 		}
 	}
 }
