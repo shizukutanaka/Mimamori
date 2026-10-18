@@ -96,7 +96,15 @@ func Match(tag string) (string, bool) {
 	if primary == "zh" {
 		for _, part := range parts[1:] {
 			switch part {
-			case "hant", "tw", "hk", "mo":
+			case "hant":
+				return "zh-Hant", true
+			case "hans":
+				return "zh-Hans", true
+			}
+		}
+		for _, part := range parts[1:] {
+			switch part {
+			case "tw", "hk", "mo":
 				return "zh-Hant", true
 			}
 		}
