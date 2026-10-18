@@ -95,6 +95,38 @@ func TestWANConnectionPPP(t *testing.T) {
 	}
 }
 
+func TestDeviceIsIGD(t *testing.T) {
+	tests := []struct {
+		name   string
+		device Device
+		want   bool
+	}{
+		{
+			name:   "root IGD",
+			device: Device{DeviceType: "urn:schemas-upnp-org:device:InternetGatewayDevice:1"},
+			want:   true,
+		},
+		{
+			name: "nested IGD",
+			device: Device{
+				DeviceType: "urn:schemas-upnp-org:device:Basic:1",
+				Devices: []Device{{
+					DeviceType: "urn:schemas-upnp-org:device:INTERNETGATEWAYDEVICE:1",
+				}},
+			},
+			want: true,
+		},
+		{name: "not an IGD", device: Device{DeviceType: "urn:schemas-upnp-org:device:Basic:1"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := test.device.IsIGD(); got != test.want {
+				t.Fatalf("IsIGD() = %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
 func TestAllowedLocation(t *testing.T) {
 	from := netip.MustParseAddr("192.168.1.20")
 	tests := []struct {

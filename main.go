@@ -382,7 +382,7 @@ func fetchPortMappings(
 		if !ok {
 			return nil, nil
 		}
-		isIGD := strings.Contains(strings.ToLower(description.Device.DeviceType), "internetgatewaydevice") ||
+		isIGD := description.Device.IsIGD() ||
 			(selected && routerIP == gateway)
 		if !isIGD {
 			return nil, nil
@@ -571,6 +571,7 @@ func makeFindings(
 				groups[index].id = group.id
 				groups[index].level = group.level
 				groups[index].points = group.points
+				groups[index].device = group.device
 			}
 			continue
 		}
@@ -623,7 +624,7 @@ func riskyPortForward(mapping ssdp.PortMapping) bool {
 
 func routerUPnPIP(gateway netip.Addr, responses []ssdp.Response, descriptions map[netip.Addr]ssdp.Description) (netip.Addr, bool) {
 	isIGDDevice := func(device ssdp.Device) bool {
-		return strings.Contains(strings.ToLower(device.DeviceType), "internetgatewaydevice")
+		return device.IsIGD()
 	}
 	isIGDResponse := func(response ssdp.Response) bool {
 		if ssdp.IsGateway(response) {

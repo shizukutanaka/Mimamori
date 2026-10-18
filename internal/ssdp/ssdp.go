@@ -131,6 +131,18 @@ type Device struct {
 	Devices      []Device  `xml:"deviceList>device"`
 }
 
+func (d Device) IsIGD() bool {
+	if strings.Contains(strings.ToLower(d.DeviceType), "internetgatewaydevice") {
+		return true
+	}
+	for _, device := range d.Devices {
+		if device.IsIGD() {
+			return true
+		}
+	}
+	return false
+}
+
 type Description struct {
 	Device   Device `xml:"device"`
 	URLBase  string `xml:"URLBase"`

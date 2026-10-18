@@ -138,6 +138,14 @@ func TestPortForwardFindings(t *testing.T) {
 			wantID: "port_forward_risky", wantLevel: report.Danger, wantCount: 1, wantPort: 4000, wantName: "Game console",
 		},
 		{
+			name: "upgraded group uses the risky mapping description",
+			mappings: []ssdp.PortMapping{
+				{ExternalPort: 4000, Protocol: "UDP", InternalPort: 4000, InternalClient: internalIP.String(), Enabled: true, Description: "Game"},
+				{ExternalPort: 4000, Protocol: "TCP", InternalPort: 3389, InternalClient: internalIP.String(), Enabled: true, Description: "RDP"},
+			},
+			wantID: "port_forward_risky", wantLevel: report.Danger, wantCount: 1, wantPort: 4000, wantName: "RDP",
+		},
+		{
 			name: "TCP then UDP keeps higher classification",
 			mappings: []ssdp.PortMapping{
 				{ExternalPort: 4000, Protocol: "TCP", InternalPort: 3389, InternalClient: internalIP.String(), Enabled: true},
@@ -231,6 +239,28 @@ func TestFetchPortMappingsQueryability(t *testing.T) {
 		})
 		if err != nil || mappings != nil {
 			t.Fatalf("fetchPortMappings() = %#v, %v; want nil, nil", mappings, err)
+		}
+	})
+
+	t.Run("nested IGD in basic gateway description", func(t *testing.T) {
+		description := ssdp.Description{
+			Device: ssdp.Device{
+				DeviceType: "urn:schemas-upnp-org:device:Basic:1",
+				Devices: []ssdp.Device{{
+					DeviceType: "urn:schemas-upnp-org:device:InternetGatewayDevice:1",
+					Services: []ssdp.Service{{
+						ServiceType: "urn:schemas-upnp-org:service:WANIPConnection:1",
+						ControlURL:  "http://8.8.8.8/control",
+					}},
+				}},
+			},
+			Location: "http://192.168.1.1:1900/description.xml",
+		}
+		_, err := fetchPortMappings(context.Background(), nil, gateway, nil, map[netip.Addr]ssdp.Description{
+			gateway: description,
+		})
+		if err == nil || err.Error() != "router advertises UPnP but its port forwarding list cannot be queried" {
+			t.Fatalf("fetchPortMappings() error = %v; want rejected control URL error", err)
 		}
 	})
 
