@@ -307,6 +307,8 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 	findings = append(findings, wifiFs...)
 	findings = append(findings, gatewaySpoofFindings(neighbors, gatewayIP, lang)...)
 	report.Sort(findings)
+	findings = append(findings, vulnerableUPnPStackFindings(discovery.responses, gatewayIP, deviceNames, lang)...)
+	report.Sort(findings)
 	status := report.Status(report.Score(findings), findings)
 	result := output{
 		Version: version, Score: report.Score(findings), Status: status, FirstRun: firstRun, Incomplete: incomplete,
