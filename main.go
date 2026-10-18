@@ -571,18 +571,33 @@ func fetchPortMappings(
 	if !ok {
 		return nil, false, fmt.Errorf("router advertises UPnP but its port forwarding list cannot be queried")
 	}
-	service, ok := description.Device.WANConnection()
-	if !ok {
-		return nil, false, fmt.Errorf("router advertises UPnP but its port forwarding list cannot be queried")
+	type serviceEndpoint struct {
+		service    ssdp.Service
+		controlURL string
 	}
-	controlURL, ok := ssdp.ControlURL(description.Location, description.URLBase, service.ControlURL, routerIP)
-	if !ok {
+	endpoints := make([]serviceEndpoint, 0)
+	for _, service := range description.Device.WANConnections() {
+		controlURL, ok := ssdp.ControlURL(description.Location, description.URLBase, service.ControlURL, routerIP)
+		if !ok {
+			continue
+		}
+		endpoints = append(endpoints, serviceEndpoint{service: service, controlURL: controlURL})
+	}
+	if len(endpoints) == 0 {
 		return nil, false, fmt.Errorf("router advertises UPnP but its port forwarding list cannot be queried")
 	}
 	queryContext, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
-	mappings, err := ssdp.PortMappings(queryContext, client, controlURL, service.ServiceType)
-	return mappings, true, err
+	var mappings []ssdp.PortMapping
+	var errs []error
+	for _, endpoint := range endpoints {
+		serviceMappings, err := ssdp.PortMappings(queryContext, client, endpoint.controlURL, endpoint.service.ServiceType)
+		mappings = append(mappings, serviceMappings...)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", endpoint.service.ServiceType, err))
+		}
+	}
+	return mappings, true, errors.Join(errs...)
 }
 
 func fetchDescriptions(ctx context.Context, client *http.Client, responses []ssdp.Response) (map[netip.Addr]ssdp.Description, []error) {
