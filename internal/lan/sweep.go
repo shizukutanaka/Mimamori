@@ -28,8 +28,10 @@ func SweepHosts(prefixes []netip.Prefix, gateway netip.Addr) []netip.Addr {
 			continue
 		}
 
-		subnet := prefix.Masked()
-		if subnet.Bits() < 24 {
+		originalSubnet := prefix.Masked()
+		subnet := originalSubnet
+		capped := subnet.Bits() < 24
+		if capped {
 			subnet = netip.PrefixFrom(prefix.Addr(), 24).Masked()
 			if !subnet.Contains(gateway) {
 				continue
@@ -41,17 +43,30 @@ func SweepHosts(prefixes []netip.Prefix, gateway netip.Addr) []netip.Addr {
 		network := binary.BigEndian.Uint32(subnet.Addr().AsSlice())
 		mask := ^uint32(0) << (32 - subnet.Bits())
 		broadcast := network | ^mask
-		for value := network + 1; value < broadcast; value++ {
+		originalNetwork := binary.BigEndian.Uint32(originalSubnet.Addr().AsSlice())
+		originalMask := ^uint32(0) << (32 - originalSubnet.Bits())
+		originalBroadcast := originalNetwork | ^originalMask
+		for value := network; ; value++ {
+			skip := false
+			if capped {
+				skip = value == originalNetwork || value == originalBroadcast
+			} else {
+				skip = value == network || value == broadcast
+			}
 			address := netip.AddrFrom4([4]byte{
 				byte(value >> 24),
 				byte(value >> 16),
 				byte(value >> 8),
 				byte(value),
 			})
-			if _, isSelf := selfAddresses[address]; isSelf {
-				continue
+			if !skip {
+				if _, isSelf := selfAddresses[address]; !isSelf {
+					hosts[address] = struct{}{}
+				}
 			}
-			hosts[address] = struct{}{}
+			if value == broadcast {
+				break
+			}
 		}
 	}
 

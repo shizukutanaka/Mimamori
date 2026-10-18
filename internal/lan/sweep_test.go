@@ -30,21 +30,81 @@ func TestSweepHosts(t *testing.T) {
 			},
 		},
 		{
-			name:      "/16 is capped to own /24",
+			name:      "/16 is capped to own /24 and includes its edges",
 			prefixes:  []netip.Prefix{netip.MustParsePrefix("10.0.5.7/16")},
 			gateway:   netip.MustParseAddr("10.0.5.1"),
-			wantCount: 253,
+			wantCount: 255,
 			wantInclude: []netip.Addr{
+				netip.MustParseAddr("10.0.5.0"),
 				netip.MustParseAddr("10.0.5.1"),
 				netip.MustParseAddr("10.0.5.254"),
+				netip.MustParseAddr("10.0.5.255"),
 			},
 			wantExclude: []netip.Addr{netip.MustParseAddr("10.0.5.7")},
+		},
+		{
+			name:      "/16 first /24 excludes original network only",
+			prefixes:  []netip.Prefix{netip.MustParsePrefix("10.0.0.7/16")},
+			gateway:   netip.MustParseAddr("10.0.0.1"),
+			wantCount: 254,
+			wantInclude: []netip.Addr{
+				netip.MustParseAddr("10.0.0.255"),
+			},
+			wantExclude: []netip.Addr{
+				netip.MustParseAddr("10.0.0.0"),
+				netip.MustParseAddr("10.0.0.7"),
+			},
+		},
+		{
+			name:      "/16 last /24 excludes original broadcast only",
+			prefixes:  []netip.Prefix{netip.MustParsePrefix("10.0.255.7/16")},
+			gateway:   netip.MustParseAddr("10.0.255.1"),
+			wantCount: 254,
+			wantInclude: []netip.Addr{
+				netip.MustParseAddr("10.0.255.0"),
+			},
+			wantExclude: []netip.Addr{
+				netip.MustParseAddr("10.0.255.7"),
+				netip.MustParseAddr("10.0.255.255"),
+			},
 		},
 		{
 			name:      "/16 with gateway outside own /24 is skipped",
 			prefixes:  []netip.Prefix{netip.MustParsePrefix("10.0.5.7/16")},
 			gateway:   netip.MustParseAddr("10.0.0.1"),
 			wantCount: 0,
+		},
+		{
+			name:      "/23 with gateway outside own /24 is skipped",
+			prefixes:  []netip.Prefix{netip.MustParsePrefix("192.168.1.7/23")},
+			gateway:   netip.MustParseAddr("192.168.0.1"),
+			wantCount: 0,
+		},
+		{
+			name:      "/23 own /24 includes final address but excludes original network",
+			prefixes:  []netip.Prefix{netip.MustParsePrefix("192.168.0.7/23")},
+			gateway:   netip.MustParseAddr("192.168.0.1"),
+			wantCount: 254,
+			wantInclude: []netip.Addr{
+				netip.MustParseAddr("192.168.0.255"),
+			},
+			wantExclude: []netip.Addr{
+				netip.MustParseAddr("192.168.0.0"),
+				netip.MustParseAddr("192.168.0.7"),
+			},
+		},
+		{
+			name:      "/23 final /24 excludes original broadcast",
+			prefixes:  []netip.Prefix{netip.MustParsePrefix("192.168.1.7/23")},
+			gateway:   netip.MustParseAddr("192.168.1.1"),
+			wantCount: 254,
+			wantInclude: []netip.Addr{
+				netip.MustParseAddr("192.168.1.0"),
+			},
+			wantExclude: []netip.Addr{
+				netip.MustParseAddr("192.168.1.7"),
+				netip.MustParseAddr("192.168.1.255"),
+			},
 		},
 		{
 			name:        "/30 includes the other usable host",
