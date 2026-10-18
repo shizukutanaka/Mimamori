@@ -58,19 +58,14 @@ mkdir dist
 build() {
 	goos=$1
 	goarch=$2
-	go386=${3:-}
+	go386=${3:-sse2}
 	extension=
 	if [ "$goos" = windows ]; then
 		extension=.exe
 	fi
 	output="dist/mimamori-${goos}-${goarch}${extension}"
-	if [ -n "$go386" ]; then
-		CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" GOARM=6 GO386="$go386" \
-			go build -trimpath -buildvcs=false -ldflags "-s -w -X main.version=$VERSION" -o "$output" .
-	else
-		CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" GOARM=6 \
-			go build -trimpath -buildvcs=false -ldflags "-s -w -X main.version=$VERSION" -o "$output" .
-	fi
+	CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" GOARM=6 GO386="$go386" \
+		go build -trimpath -buildvcs=false -ldflags "-s -w -X main.version=$VERSION" -o "$output" .
 
 	package_dir="dist/.package-${goos}-${goarch}"
 	mkdir "$package_dir"
