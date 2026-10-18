@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -70,31 +71,77 @@ func TestLoadDistinguishesParseAndReadErrors(t *testing.T) {
 	}
 }
 
-func TestQuarantineOverwritesPreviousBackup(t *testing.T) {
+func TestQuarantinePreservesPreviousBackup(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "devices.json")
-	corrupt := []byte("{invalid")
-	if err := os.WriteFile(path, corrupt, 0600); err != nil {
+	firstContents := []byte("first corrupt history")
+	if err := os.WriteFile(path, firstContents, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path+".corrupt", []byte("older backup"), 0600); err != nil {
+	firstBackup, err := Quarantine(path)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if firstBackup != path+".corrupt" {
+		t.Fatalf("first Quarantine() path = %q, want %q", firstBackup, path+".corrupt")
+	}
+	if err := os.WriteFile(path, []byte("second corrupt history"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	secondBackup, err := Quarantine(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if secondBackup != path+".corrupt.1" {
+		t.Fatalf("second Quarantine() path = %q, want %q", secondBackup, path+".corrupt.1")
 	}
 
-	quarantinePath, err := Quarantine(path)
+	got, err := os.ReadFile(firstBackup)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if quarantinePath != path+".corrupt" {
-		t.Fatalf("Quarantine() path = %q, want %q", quarantinePath, path+".corrupt")
+	if string(got) != string(firstContents) {
+		t.Fatalf("first backup contents = %q, want %q", got, firstContents)
 	}
-	got, err := os.ReadFile(quarantinePath)
+	got, err = os.ReadFile(secondBackup)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(got) != string(corrupt) {
-		t.Fatalf("quarantine contents = %q, want %q", got, corrupt)
+	if string(got) != "second corrupt history" {
+		t.Fatalf("second backup contents = %q", got)
 	}
 	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("original history still exists or stat failed: %v", err)
+	}
+}
+
+func TestQuarantineFailsWhenBackupNamesAreExhausted(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "devices.json")
+	original := []byte("corrupt history")
+	if err := os.WriteFile(path, original, 0600); err != nil {
+		t.Fatal(err)
+	}
+	for index := 0; index <= 99; index++ {
+		backupPath := path + ".corrupt"
+		if index > 0 {
+			backupPath += "." + strconv.Itoa(index)
+		}
+		if err := os.WriteFile(backupPath, []byte("existing backup"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	backupPath, err := Quarantine(path)
+	if err == nil {
+		t.Fatal("Quarantine() succeeded with all backup names occupied")
+	}
+	if backupPath != path+".corrupt.99" {
+		t.Fatalf("Quarantine() path = %q, want final candidate %q", backupPath, path+".corrupt.99")
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(original) {
+		t.Fatalf("original contents = %q, want %q", got, original)
 	}
 }

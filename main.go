@@ -169,22 +169,22 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 	if discovery.err != nil {
 		fmt.Fprintf(stderr, "warning: UPnP discovery failed: %v\n", discovery.err)
 	}
-	incomplete := arp.err != nil || gateway.err != nil || discovery.err != nil
-	if incomplete && !*jsonOutput {
-		fmt.Fprintln(stderr, "warning: some checks could not run; this result may be incomplete")
-	}
 
 	descriptions, descriptionErrors := fetchDescriptions(ctx, discovery.responses)
 	for _, err := range descriptionErrors {
 		fmt.Fprintf(stderr, "warning: cannot read a device description: %v\n", err)
 	}
+	incomplete := arp.err != nil || gateway.err != nil || discovery.err != nil || len(descriptionErrors) > 0
+	if incomplete && !*jsonOutput {
+		fmt.Fprintln(stderr, "warning: some checks could not run; this result may be incomplete")
+	}
 
 	hosts := collectHosts(arp.neighbors, gatewayIP, discovery.responses)
-	if !hasScanHosts(hosts) {
+	opened := probe.Scan(ctx, hosts, []int{23, 2323, 21, 5900}, 700*time.Millisecond, 64)
+	if !scanObservedNetwork(arp.neighbors, discovery.responses, opened) {
 		fmt.Fprintln(stderr, "error: the scan could not see any device on your network; the result would not be reliable")
 		return finish(1)
 	}
-	opened := probe.Scan(ctx, hosts, []int{23, 2323, 21, 5900}, 700*time.Millisecond, 64)
 
 	store, existed, err := baseline.Load(*statePath)
 	firstRun := !existed
@@ -262,8 +262,8 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 	return finish(0)
 }
 
-func hasScanHosts(hosts []netip.Addr) bool {
-	return len(hosts) > 0
+func scanObservedNetwork(neighbors []lan.Neighbor, responses []ssdp.Response, opened []probe.Open) bool {
+	return len(neighbors) > 0 || len(responses) > 0 || len(opened) > 0
 }
 
 func shouldSaveHistory(outputSucceeded, firstRun bool, store baseline.Store, loadState historyLoadState) bool {

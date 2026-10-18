@@ -104,13 +104,23 @@ func Save(path string, store Store) error {
 
 func Quarantine(path string) (string, error) {
 	quarantinePath := path + ".corrupt"
-	if err := os.Remove(quarantinePath); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return quarantinePath, err
+	for index := 0; index <= 99; index++ {
+		if index > 0 {
+			quarantinePath = fmt.Sprintf("%s.corrupt.%d", path, index)
+		}
+		_, err := os.Lstat(quarantinePath)
+		if err == nil {
+			continue
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return quarantinePath, err
+		}
+		if err := os.Rename(path, quarantinePath); err != nil {
+			return quarantinePath, err
+		}
+		return quarantinePath, nil
 	}
-	if err := os.Rename(path, quarantinePath); err != nil {
-		return quarantinePath, err
-	}
-	return quarantinePath, nil
+	return quarantinePath, fmt.Errorf("all quarantine backup names are in use")
 }
 
 func DefaultPath() (string, error) {

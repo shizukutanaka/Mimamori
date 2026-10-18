@@ -185,12 +185,31 @@ func TestGatewayString(t *testing.T) {
 	}
 }
 
-func TestHasScanHosts(t *testing.T) {
-	if hasScanHosts(nil) {
-		t.Fatal("empty scan should not be considered reliable")
+func TestScanObservedNetwork(t *testing.T) {
+	tests := []struct {
+		name      string
+		gateway   netip.Addr
+		neighbors []lan.Neighbor
+		responses []ssdp.Response
+		opened    []probe.Open
+		want      bool
+	}{
+		{name: "gateway only, nothing open", gateway: netip.MustParseAddr("192.168.1.1")},
+		{name: "neighbor observed", neighbors: []lan.Neighbor{{IP: netip.MustParseAddr("192.168.1.2")}}, want: true},
+		{name: "SSDP response observed", responses: []ssdp.Response{{IP: netip.MustParseAddr("192.168.1.2")}}, want: true},
+		{name: "open service observed", opened: []probe.Open{{IP: netip.MustParseAddr("192.168.1.2"), Port: 23}}, want: true},
 	}
-	if !hasScanHosts([]netip.Addr{netip.MustParseAddr("192.168.1.1")}) {
-		t.Fatal("non-empty scan should be considered reliable")
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if test.gateway.IsValid() {
+				if hosts := collectHosts(test.neighbors, test.gateway, test.responses); len(hosts) != 1 {
+					t.Fatalf("gateway-only scan hosts = %v, want only the gateway", hosts)
+				}
+			}
+			if got := scanObservedNetwork(test.neighbors, test.responses, test.opened); got != test.want {
+				t.Fatalf("scanObservedNetwork() = %v, want %v", got, test.want)
+			}
+		})
 	}
 }
 
