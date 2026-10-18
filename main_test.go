@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/netip"
+	"reflect"
 	"strings"
 	"testing"
 	"unicode"
@@ -62,6 +63,106 @@ func TestMakeFindings(t *testing.T) {
 			}
 			if got := report.Score(findings); got != 51 {
 				t.Fatalf("score = %d, want 51", got)
+			}
+		})
+	}
+}
+
+func TestVulnerableUPnPComponent(t *testing.T) {
+	tests := []struct {
+		name       string
+		server     string
+		want       string
+		vulnerable bool
+	}{
+		{name: "libupnp 1.6.6", server: "Portable SDK for UPnP devices/1.6.6", want: "libupnp 1.6.6", vulnerable: true},
+		{name: "libupnp 1.6.17", server: "Portable SDK for UPnP devices/1.6.17", want: "libupnp 1.6.17", vulnerable: true},
+		{name: "libupnp threshold", server: "Portable SDK for UPnP devices/1.6.18"},
+		{name: "libupnp newer minor", server: "Portable SDK for UPnP devices/1.8.0"},
+		{name: "libupnp numeric minor", server: "Portable SDK for UPnP devices/1.14.0"},
+		{name: "Intel SDK case insensitive", server: "intel sdk for upnp devices/", want: "Intel SDK for UPnP devices (all versions)", vulnerable: true},
+		{name: "MiniUPnPd 1.0", server: "miniupnpd/1.0", want: "MiniUPnPd 1.0", vulnerable: true},
+		{name: "MiniUPnPd 1.3", server: "MINIUPNPD/1.3", want: "MiniUPnPd 1.3", vulnerable: true},
+		{name: "MiniUPnPd threshold", server: "miniupnpd/1.4"},
+		{name: "MiniUPnPd newer major", server: "miniupnpd/2.1"},
+		{name: "unparseable portable version", server: "Portable SDK for UPnP devices/1.6.x"},
+		{name: "unparseable miniupnpd version", server: "miniupnpd/1.x"},
+		{name: "garbage", server: "unrelated UPnP/1.0"},
+		{name: "empty", server: ""},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, vulnerable := vulnerableUPnPComponent(test.server)
+			if got != test.want || vulnerable != test.vulnerable {
+				t.Fatalf("vulnerableUPnPComponent(%q) = (%q, %t), want (%q, %t)",
+					test.server, got, vulnerable, test.want, test.vulnerable)
+			}
+		})
+	}
+}
+
+func TestVulnerableUPnPStackFindingsDeduplicateAndScoreByGateway(t *testing.T) {
+	gateway := netip.MustParseAddr("192.168.1.1")
+	client := netip.MustParseAddr("192.168.1.20")
+	responses := []ssdp.Response{
+		{IP: gateway, Server: "miniupnpd/1.0"},
+		{IP: gateway, Server: "Portable SDK for UPnP devices/1.6.6"},
+		{IP: client, Server: "Portable SDK for UPnP devices/1.6.17"},
+	}
+	findings := vulnerableUPnPStackFindings(
+		responses, gateway, map[netip.Addr]string{gateway: "Home Router"}, "en",
+	)
+	if len(findings) != 2 {
+		t.Fatalf("vulnerableUPnPStackFindings() returned %d findings, want 2: %#v", len(findings), findings)
+	}
+	if finding := findings[0]; finding.ID != "upnp_stack_vulnerable" ||
+		finding.Level != report.Danger || finding.Points != 15 ||
+		finding.IP != gateway.String() || finding.Device != "Home Router" {
+		t.Errorf("gateway finding = %#v, want Danger/15 for Home Router", finding)
+	}
+	if finding := findings[1]; finding.ID != "upnp_stack_vulnerable" ||
+		finding.Level != report.Caution || finding.Points != 8 ||
+		finding.IP != client.String() || finding.Device != client.String() {
+		t.Errorf("client finding = %#v, want Caution/8 with IP fallback", finding)
+	}
+	if got := report.Score(findings); got != 77 {
+		t.Errorf("report.Score() = %d, want 77", got)
+	}
+}
+
+func TestVulnerableUPnPStackMessageFormatting(t *testing.T) {
+	ip := netip.MustParseAddr("192.168.1.1")
+	tests := []struct {
+		lang        string
+		device      string
+		wantMessage string
+		wantFix     string
+	}{
+		{
+			lang:        "en",
+			device:      "Router",
+			wantMessage: "Router uses an old UPnP component (libupnp 1.6.6) with known remotely exploitable vulnerabilities.",
+			wantFix:     "Update the device's firmware. If no update exists, turn off UPnP on it (and on the router), and consider replacing it.",
+		},
+		{
+			lang:        "ja",
+			device:      "ルーター",
+			wantMessage: "「ルーター」は、遠隔から悪用できる既知の脆弱性がある古い UPnP 部品（libupnp 1.6.6）を使っています。",
+			wantFix:     "ファームウェアを更新してください。更新がない場合は、その機器とルーターの UPnP を無効にし、買い替えも検討してください。",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.lang, func(t *testing.T) {
+			findings := vulnerableUPnPStackFindings(
+				[]ssdp.Response{{IP: ip, Server: "Portable SDK for UPnP devices/1.6.6"}},
+				ip, map[netip.Addr]string{ip: test.device}, test.lang,
+			)
+			if len(findings) != 1 {
+				t.Fatalf("vulnerableUPnPStackFindings() returned %d findings, want 1", len(findings))
+			}
+			if findings[0].Message != test.wantMessage || findings[0].Fix != test.wantFix {
+				t.Fatalf("finding text = (%q, %q), want (%q, %q)",
+					findings[0].Message, findings[0].Fix, test.wantMessage, test.wantFix)
 			}
 		})
 	}
@@ -555,9 +656,106 @@ func TestSanitizeName(t *testing.T) {
 	ip := netip.MustParseAddr("192.168.1.20")
 	name := deviceName("en", ip, lan.Neighbor{}, netip.Addr{}, map[netip.Addr]ssdp.Description{
 		ip: {Device: ssdp.Device{Manufacturer: "Brand\x1b", ModelName: "Model\u200f"}},
-	})
+	}, nil)
 	if name != "Brand Model" {
 		t.Fatalf("deviceName() = %q, want sanitized manufacturer and model", name)
+	}
+}
+
+func TestDeviceNamePrecedence(t *testing.T) {
+	ip := netip.MustParseAddr("192.168.1.20")
+	router := netip.MustParseAddr("192.168.1.1")
+	randomized := lan.Neighbor{MAC: "02:11:22:33:44:55"}
+	tests := []struct {
+		name          string
+		ip            netip.Addr
+		neighbor      lan.Neighbor
+		gateway       netip.Addr
+		descriptions  map[netip.Addr]ssdp.Description
+		resolvedNames map[netip.Addr]string
+		want          string
+	}{
+		{
+			name:     "SSDP description wins",
+			ip:       router,
+			neighbor: randomized,
+			gateway:  router,
+			descriptions: map[netip.Addr]ssdp.Description{
+				router: {Device: ssdp.Device{FriendlyName: "Living Room"}},
+			},
+			resolvedNames: map[netip.Addr]string{router: "router.local"},
+			want:          "Living Room",
+		},
+		{
+			name:          "router label wins over resolved name",
+			ip:            router,
+			neighbor:      randomized,
+			gateway:       router,
+			resolvedNames: map[netip.Addr]string{router: "home-gateway"},
+			want:          i18n.T("en", "router"),
+		},
+		{
+			name:          "sanitized resolved name wins over randomized label",
+			ip:            ip,
+			neighbor:      randomized,
+			resolvedNames: map[netip.Addr]string{ip: " Phone\u0000.local "},
+			want:          "Phone.local",
+		},
+		{
+			name:     "randomized label wins over IP",
+			ip:       ip,
+			neighbor: randomized,
+			want:     i18n.T("en", "randomized_device"),
+		},
+		{
+			name:          "uppercase NetBIOS name is preserved",
+			ip:            ip,
+			neighbor:      randomized,
+			resolvedNames: map[netip.Addr]string{ip: "DESKTOP-AB12CD"},
+			want:          "DESKTOP-AB12CD",
+		},
+		{name: "IP fallback", ip: ip, want: ip.String()},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := deviceName(
+				"en",
+				test.ip,
+				test.neighbor,
+				test.gateway,
+				test.descriptions,
+				test.resolvedNames,
+			)
+			if got != test.want {
+				t.Fatalf("deviceName() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestMergeDeviceNamesPrefersMDNSAndFallsBackToNetBIOS(t *testing.T) {
+	mdnsIP := netip.MustParseAddr("192.168.1.20")
+	netbiosIP := netip.MustParseAddr("192.168.1.21")
+	emptyMDNSIP := netip.MustParseAddr("192.168.1.22")
+	mdnsNames := map[netip.Addr]string{
+		mdnsIP:      "iphone.local",
+		emptyMDNSIP: "\x00",
+	}
+	netbiosNames := map[netip.Addr]string{
+		mdnsIP:      "IPHONE",
+		netbiosIP:   "DESKTOP-AB12CD",
+		emptyMDNSIP: "PRINTER01",
+	}
+
+	got := mergeDeviceNames(mdnsNames, netbiosNames)
+	want := map[netip.Addr]string{
+		mdnsIP:      "iphone.local",
+		netbiosIP:   "DESKTOP-AB12CD",
+		emptyMDNSIP: "PRINTER01",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("mergeDeviceNames() = %v, want %v", got, want)
 	}
 }
 

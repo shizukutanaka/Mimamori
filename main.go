@@ -22,6 +22,8 @@ import (
 	"github.com/shizukutanaka/Mimamori/internal/console"
 	"github.com/shizukutanaka/Mimamori/internal/i18n"
 	"github.com/shizukutanaka/Mimamori/internal/lan"
+	"github.com/shizukutanaka/Mimamori/internal/mdns"
+	"github.com/shizukutanaka/Mimamori/internal/netbios"
 	"github.com/shizukutanaka/Mimamori/internal/probe"
 	"github.com/shizukutanaka/Mimamori/internal/report"
 	"github.com/shizukutanaka/Mimamori/internal/ssdp"
@@ -272,6 +274,7 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 	}
 
 	reportedHosts := deviceHosts(neighbors, gatewayIP, discovery.responses, opened)
+	resolvedNames := lookupDeviceNames(ctx, reportedHosts)
 	neighborByIP := make(map[netip.Addr]lan.Neighbor, len(neighbors))
 	for _, neighbor := range neighbors {
 		neighborByIP[neighbor.IP] = neighbor
@@ -281,7 +284,7 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 	now := time.Now().UTC()
 	for _, host := range reportedHosts {
 		neighbor := neighborByIP[host]
-		name := deviceName(lang, host, neighbor, gatewayIP, descriptions)
+		name := deviceName(lang, host, neighbor, gatewayIP, descriptions, resolvedNames)
 		deviceNames[host] = name
 		if neighbor.MAC == "" {
 			continue
@@ -303,6 +306,8 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 	findings := makeFindings(opened, discovery.responses, gatewayIP, descriptions, deviceNames, newDeviceFindings, portMappings, lang)
 	findings = append(findings, wifiFs...)
 	findings = append(findings, gatewaySpoofFindings(neighbors, gatewayIP, lang)...)
+	report.Sort(findings)
+	findings = append(findings, vulnerableUPnPStackFindings(discovery.responses, gatewayIP, deviceNames, lang)...)
 	report.Sort(findings)
 	status := report.Status(report.Score(findings), findings)
 	result := output{
@@ -615,7 +620,48 @@ func fetchDescriptions(ctx context.Context, client *http.Client, responses []ssd
 	return devices, errs
 }
 
-func deviceName(lang string, ip netip.Addr, neighbor lan.Neighbor, gateway netip.Addr, descriptions map[netip.Addr]ssdp.Description) string {
+func lookupDeviceNames(ctx context.Context, hosts []netip.Addr) map[netip.Addr]string {
+	lookupCtx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+
+	var mdnsNames, netbiosNames map[netip.Addr]string
+	var lookups sync.WaitGroup
+	lookups.Add(2)
+	go func() {
+		defer lookups.Done()
+		mdnsNames = mdns.ReverseNames(lookupCtx, hosts, time.Second)
+	}()
+	go func() {
+		defer lookups.Done()
+		netbiosNames = netbios.Names(lookupCtx, hosts, time.Second)
+	}()
+	lookups.Wait()
+	return mergeDeviceNames(mdnsNames, netbiosNames)
+}
+
+func mergeDeviceNames(mdnsNames, netbiosNames map[netip.Addr]string) map[netip.Addr]string {
+	resolved := make(map[netip.Addr]string, len(mdnsNames)+len(netbiosNames))
+	for ip, name := range netbiosNames {
+		if sanitizeName(name) != "" {
+			resolved[ip] = name
+		}
+	}
+	for ip, name := range mdnsNames {
+		if sanitizeName(name) != "" {
+			resolved[ip] = name
+		}
+	}
+	return resolved
+}
+
+func deviceName(
+	lang string,
+	ip netip.Addr,
+	neighbor lan.Neighbor,
+	gateway netip.Addr,
+	descriptions map[netip.Addr]ssdp.Description,
+	resolvedNames map[netip.Addr]string,
+) string {
 	if description, ok := descriptions[ip]; ok {
 		if name := sanitizeName(description.Device.FriendlyName); name != "" {
 			return name
@@ -627,6 +673,9 @@ func deviceName(lang string, ip netip.Addr, neighbor lan.Neighbor, gateway netip
 	}
 	if gateway.IsValid() && ip == gateway {
 		return i18n.T(lang, "router")
+	}
+	if name := sanitizeName(resolvedNames[ip]); name != "" {
+		return name
 	}
 	if neighbor.MAC != "" && lan.IsRandomizedMAC(neighbor.MAC) {
 		return i18n.T(lang, "randomized_device")
