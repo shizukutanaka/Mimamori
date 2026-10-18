@@ -832,6 +832,53 @@ func TestWriteOutputFailurePreventsHistorySave(t *testing.T) {
 	}
 }
 
+func TestRunIncompleteWarningRouting(t *testing.T) {
+	t.Run("text output uses localized notice only", func(t *testing.T) {
+		var stdout, stderr bytes.Buffer
+		if err := writeOutput(&stdout, output{Score: 100, Status: "safe", Incomplete: true}, false, "ja"); err != nil {
+			t.Fatal(err)
+		}
+		finishRun(&stderr, 0, "ja", false, true, true)
+		if !strings.Contains(stdout.String(), i18n.T("ja", "incomplete_notice")) {
+			t.Fatalf("text output = %q, missing localized incomplete notice", stdout.String())
+		}
+		if strings.Contains(stderr.String(), "warning: some checks could not run; this result may be incomplete") {
+			t.Fatalf("text stderr = %q, unexpectedly includes generic incomplete warning", stderr.String())
+		}
+	})
+
+	t.Run("JSON output retains generic warning", func(t *testing.T) {
+		var stdout, stderr bytes.Buffer
+		if err := writeOutput(&stdout, output{Incomplete: true}, true, "en"); err != nil {
+			t.Fatal(err)
+		}
+		finishRun(&stderr, 0, "en", true, true, false)
+		if !strings.Contains(stderr.String(), "warning: some checks could not run; this result may be incomplete") {
+			t.Fatalf("JSON stderr = %q, missing generic incomplete warning", stderr.String())
+		}
+	})
+
+	t.Run("early exit retains generic warning", func(t *testing.T) {
+		var stderr bytes.Buffer
+		finishRun(&stderr, 1, "ja", false, true, false)
+		if !strings.Contains(stderr.String(), "warning: some checks could not run; this result may be incomplete") {
+			t.Fatalf("early-exit stderr = %q, missing generic incomplete warning", stderr.String())
+		}
+	})
+}
+
+func TestRunOutputFailureRetainsIncompleteWarning(t *testing.T) {
+	var stderr bytes.Buffer
+	err := writeOutput(failingOutputWriter{}, output{Incomplete: true}, false, "ja")
+	if err == nil {
+		t.Fatal("writeOutput() succeeded with a failing writer")
+	}
+	finishRun(&stderr, 1, "ja", false, true, false)
+	if !strings.Contains(stderr.String(), "warning: some checks could not run; this result may be incomplete") {
+		t.Fatalf("failed-output stderr = %q, missing generic incomplete warning", stderr.String())
+	}
+}
+
 func TestWriteOutputIncludesIncompleteJSON(t *testing.T) {
 	var buffer bytes.Buffer
 	if err := writeOutput(&buffer, output{Incomplete: true}, true, "en"); err != nil {
