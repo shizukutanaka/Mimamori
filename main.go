@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"flag"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/shizukutanaka/Mimamori/internal/baseline"
+	"github.com/shizukutanaka/Mimamori/internal/console"
 	"github.com/shizukutanaka/Mimamori/internal/i18n"
 	"github.com/shizukutanaka/Mimamori/internal/lan"
 	"github.com/shizukutanaka/Mimamori/internal/probe"
@@ -41,6 +43,12 @@ type output struct {
 	Findings []report.Finding `json:"findings"`
 }
 
+type runResult struct {
+	code  int
+	lang  string
+	pause bool
+}
+
 type discoveryResult struct {
 	neighbors []lan.Neighbor
 	err       error
@@ -63,10 +71,15 @@ type descriptionResult struct {
 }
 
 func main() {
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+	result := run(os.Args[1:], os.Stdout, os.Stderr)
+	if result.pause && console.ShouldPause() {
+		fmt.Fprint(os.Stdout, i18n.T(result.lang, "press_enter"))
+		_, _ = bufio.NewReader(os.Stdin).ReadString('\n')
+	}
+	os.Exit(result.code)
 }
 
-func run(args []string, stdout, stderr io.Writer) int {
+func run(args []string, stdout, stderr io.Writer) runResult {
 	flags := flag.NewFlagSet("mimamori", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	jsonOutput := flags.Bool("json", false, "write JSON output")
@@ -74,38 +87,42 @@ func run(args []string, stdout, stderr io.Writer) int {
 	statePath := flags.String("state", "", "path to the local device history file")
 	wait := flags.Duration("wait", 3*time.Second, "time to listen for local UPnP devices")
 	showVersion := flags.Bool("version", false, "print version")
+	lang := ""
+	finish := func(code int) runResult {
+		return runResult{code: code, lang: lang, pause: !*jsonOutput}
+	}
 	if err := flags.Parse(args); err != nil {
 		if err == flag.ErrHelp {
-			return 0
+			return finish(0)
 		}
-		return 1
+		return finish(1)
 	}
 	if flags.NArg() != 0 {
 		fmt.Fprintf(stderr, "unexpected argument: %s\n", flags.Arg(0))
-		return 1
+		return finish(1)
 	}
 	if *showVersion {
 		fmt.Fprintf(stdout, "Mimamori %s\n", version)
-		return 0
+		return finish(0)
 	}
 	if *language != "auto" && *language != "en" && *language != "ja" {
 		fmt.Fprintf(stderr, "invalid --lang %q (use auto, en, or ja)\n", *language)
-		return 1
+		return finish(1)
 	}
 	if *wait < 0 {
 		fmt.Fprintln(stderr, "--wait cannot be negative")
-		return 1
+		return finish(1)
 	}
 	if *statePath == "" {
 		var err error
 		*statePath, err = baseline.DefaultPath()
 		if err != nil {
 			fmt.Fprintf(stderr, "warning: cannot determine state path: %v\n", err)
-			return 1
+			return finish(1)
 		}
 	}
 
-	lang := *language
+	lang = *language
 	if lang == "auto" {
 		lang = i18n.Detect(os.Getenv)
 	}
@@ -199,21 +216,21 @@ func run(args []string, stdout, stderr io.Writer) int {
 		encoder.SetIndent("", "  ")
 		if err := encoder.Encode(result); err != nil {
 			fmt.Fprintf(stderr, "warning: cannot write JSON output: %v\n", err)
-			return 1
+			return finish(1)
 		}
 	} else {
 		renderText(stdout, result, lang)
 	}
 	if stateError != nil {
-		return 1
+		return finish(1)
 	}
 
 	for _, finding := range findings {
 		if finding.Level == report.Danger {
-			return 2
+			return finish(2)
 		}
 	}
-	return 0
+	return finish(0)
 }
 
 func gatewayString(ip netip.Addr) string {
@@ -411,7 +428,7 @@ func renderText(writer io.Writer, result output, lang string) {
 			if finding.IP != "" {
 				fmt.Fprintf(writer, " (%s)", finding.IP)
 			}
-			fmt.Fprintf(writer, "\n         → %s  （%s）\n", finding.Fix, i18n.T(lang, "points_recovered", finding.Points))
+			fmt.Fprintf(writer, "\n         → %s  %s\n", finding.Fix, i18n.T(lang, "points_recovered", finding.Points))
 		}
 	}
 	fmt.Fprintf(writer, "\n%s\n", i18n.T(lang, "devices_heading"))

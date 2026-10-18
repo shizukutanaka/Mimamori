@@ -17,7 +17,7 @@ Download the binary for your operating system and run it from a terminal:
 ./mimamori --state ./devices.json --wait 5s
 ```
 
-On Windows, run `mimamori.exe` (for example, `.\mimamori.exe --lang ja`). The first run learns the devices on your network; new-device notices begin on the next run. By default, history is stored under your OS user configuration directory in `Mimamori/devices.json`.
+On Windows, run `mimamori.exe` (for example, `.\mimamori.exe --lang ja`) or double-click it in Explorer. When launched by double-click, the window stays open until you press Enter so you can read the results. The first run learns the devices on your network; new-device notices begin on the next run. By default, history is stored under your OS user configuration directory in `Mimamori/devices.json`.
 
 Language is detected from the system locale by default. Use `--lang en` or `--lang ja` to choose explicitly, and `--json` for indented JSON output.
 
@@ -70,7 +70,7 @@ Mimamori は「今、家のネットワークは安全だろうか？」とい�
 ./mimamori --state ./devices.json --wait 5s
 ```
 
-Windows では `mimamori.exe` を実行してください（例: `.\mimamori.exe --lang ja`）。初回は家の機器を記録し、新しい機器のお知らせは次回から表示します。履歴は通常、OS のユーザー設定フォルダーにある `Mimamori/devices.json` に保存されます。
+Windows では `mimamori.exe` を実行してください（例: `.\mimamori.exe --lang ja`）。エクスプローラーからダブルクリックしても起動でき、その場合は結果を読めるよう Enter キーを押すまでウィンドウが開いたままになります。初回は家の機器を記録し、新しい機器のお知らせは次回から表示します。履歴は通常、OS のユーザー設定フォルダーにある `Mimamori/devices.json` に保存されます。
 
 言語はシステムの設定から自動で選ばれます。`--lang en` または `--lang ja` で指定でき、`--json` で整形済み JSON を出力できます。
 
