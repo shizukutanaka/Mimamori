@@ -296,7 +296,7 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 
 	findings := makeFindings(opened, discovery.responses, gatewayIP, descriptions, deviceNames, newDevices, portMappings, lang)
 	findings = append(findings, wifiFs...)
-	findings = append(findings, gatewaySpoofFindings(neighbors, gatewayIP, lang)...)
+	findings = append(findings, gatewaySpoofFindings(gatewayNeighbors(ctx, neighbors, gatewayIP, lan.ReadARP), gatewayIP, lang)...)
 	report.Sort(findings)
 	status := report.Status(report.Score(findings), findings)
 	result := output{

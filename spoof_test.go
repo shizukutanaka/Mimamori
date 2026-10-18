@@ -1,7 +1,10 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"net/netip"
+	"reflect"
 	"testing"
 
 	"github.com/shizukutanaka/Mimamori/internal/i18n"
@@ -152,5 +155,81 @@ func TestGatewaySpoofCatalogCoverage(t *testing.T) {
 		if lang != "en" && (message == englishMessage || fix == englishFix) {
 			t.Errorf("%s catalog fell back to English for a gateway spoof message", lang)
 		}
+	}
+}
+
+func TestGatewayNeighborsRefreshFindsSpoof(t *testing.T) {
+	gateway := netip.MustParseAddr("192.168.1.1")
+	initial := []lan.Neighbor{{IP: netip.MustParseAddr("192.168.1.10"), MAC: "aa:bb:cc:00:11:33"}}
+	refreshed := []lan.Neighbor{
+		{IP: gateway, MAC: "aa:bb:cc:00:11:22"},
+		{IP: netip.MustParseAddr("192.168.1.50"), MAC: "aa:bb:cc:00:11:22"},
+	}
+	calls := 0
+
+	neighbors := gatewayNeighbors(context.Background(), initial, gateway, func(context.Context) ([]lan.Neighbor, error) {
+		calls++
+		return refreshed, nil
+	})
+	findings := gatewaySpoofFindings(neighbors, gateway, "en")
+
+	if calls != 1 {
+		t.Fatalf("readARP calls = %d, want 1", calls)
+	}
+	if len(findings) != 1 || findings[0].ID != "gateway_spoof" {
+		t.Fatalf("gatewaySpoofFindings() = %#v, want one gateway_spoof finding", findings)
+	}
+}
+
+func TestGatewayNeighborsSkipsRefreshWhenGatewayPresent(t *testing.T) {
+	gateway := netip.MustParseAddr("192.168.1.1")
+	neighbors := []lan.Neighbor{{IP: gateway, MAC: "aa:bb:cc:00:11:22"}}
+	calls := 0
+
+	got := gatewayNeighbors(context.Background(), neighbors, gateway, func(context.Context) ([]lan.Neighbor, error) {
+		calls++
+		return nil, nil
+	})
+
+	if calls != 0 {
+		t.Fatalf("readARP calls = %d, want 0", calls)
+	}
+	if !reflect.DeepEqual(got, neighbors) {
+		t.Fatalf("gatewayNeighbors() = %#v, want unchanged neighbors %#v", got, neighbors)
+	}
+}
+
+func TestGatewayNeighborsKeepsNeighborsOnRefreshError(t *testing.T) {
+	gateway := netip.MustParseAddr("192.168.1.1")
+	neighbors := []lan.Neighbor{{IP: netip.MustParseAddr("192.168.1.10"), MAC: "aa:bb:cc:00:11:33"}}
+	calls := 0
+
+	got := gatewayNeighbors(context.Background(), neighbors, gateway, func(context.Context) ([]lan.Neighbor, error) {
+		calls++
+		return nil, errors.New("read failed")
+	})
+
+	if calls != 1 {
+		t.Fatalf("readARP calls = %d, want 1", calls)
+	}
+	if !reflect.DeepEqual(got, neighbors) {
+		t.Fatalf("gatewayNeighbors() = %#v, want unchanged neighbors %#v", got, neighbors)
+	}
+}
+
+func TestGatewayNeighborsSkipsRefreshForInvalidGateway(t *testing.T) {
+	neighbors := []lan.Neighbor{{IP: netip.MustParseAddr("192.168.1.10"), MAC: "aa:bb:cc:00:11:33"}}
+	calls := 0
+
+	got := gatewayNeighbors(context.Background(), neighbors, netip.Addr{}, func(context.Context) ([]lan.Neighbor, error) {
+		calls++
+		return nil, nil
+	})
+
+	if calls != 0 {
+		t.Fatalf("readARP calls = %d, want 0", calls)
+	}
+	if !reflect.DeepEqual(got, neighbors) {
+		t.Fatalf("gatewayNeighbors() = %#v, want unchanged neighbors %#v", got, neighbors)
 	}
 }

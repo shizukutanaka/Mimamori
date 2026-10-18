@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"net/netip"
 	"sort"
 	"strconv"
@@ -10,6 +11,27 @@ import (
 	"github.com/shizukutanaka/Mimamori/internal/lan"
 	"github.com/shizukutanaka/Mimamori/internal/report"
 )
+
+func gatewayNeighbors(
+	ctx context.Context,
+	neighbors []lan.Neighbor,
+	gateway netip.Addr,
+	readARP func(context.Context) ([]lan.Neighbor, error),
+) []lan.Neighbor {
+	if !gateway.IsValid() {
+		return neighbors
+	}
+	for _, neighbor := range neighbors {
+		if neighbor.IP == gateway {
+			return neighbors
+		}
+	}
+	refreshed, err := readARP(ctx)
+	if err != nil {
+		return neighbors
+	}
+	return mergeNeighbors(neighbors, refreshed)
+}
 
 func gatewaySpoofFindings(neighbors []lan.Neighbor, gateway netip.Addr, lang string) []report.Finding {
 	if !gateway.IsValid() {
