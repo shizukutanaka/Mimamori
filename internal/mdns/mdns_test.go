@@ -47,10 +47,10 @@ func TestParsePTRResponse(t *testing.T) {
 		{name: "truncated rdata", packet: truncatedRData()},
 		{name: "pointer loop", packet: pointerLoop()},
 		{
-			name:     "uppercase names are lowercased",
+			name:     "uppercase question matches and target case is preserved",
 			packet:   makePTRResponse("1.0.0.127.IN-ADDR.ARPA", "1.0.0.127.IN-ADDR.ARPA", "Phone.LOCAL", 12, 0x8001, 0x8000),
 			question: "1.0.0.127.in-addr.arpa",
-			target:   "phone.local",
+			target:   "Phone.LOCAL",
 			ok:       true,
 		},
 	}
@@ -84,18 +84,55 @@ func TestReverseNames(t *testing.T) {
 
 	t.Run("strips local suffix and returns early", func(t *testing.T) {
 		port := startResponder(t, nil, func(query []byte) []byte {
-			response := makePTRResponse(question, question, "TaroS-iPhone.local", 12, 1, 0x8000)
+			uppercaseQuestion := strings.ToUpper(question)
+			response := makePTRResponse(uppercaseQuestion, uppercaseQuestion, "TaroS-iPhone.local", 12, 1, 0x8000)
 			copy(response[:2], query[:2])
 			return response
 		})
 		start := time.Now()
 		names := reverseNames(context.Background(), []netip.Addr{host}, port, netip.Addr.IsLoopback, 3*time.Second)
 		elapsed := time.Since(start)
-		if got := names[host]; got != "taros-iphone" {
-			t.Fatalf("ReverseNames() name = %q, want %q", got, "taros-iphone")
+		if got := names[host]; got != "TaroS-iPhone" {
+			t.Fatalf("ReverseNames() name = %q, want %q", got, "TaroS-iPhone")
 		}
 		if elapsed >= time.Second {
 			t.Fatalf("ReverseNames() took %v, want early return well before the 3 second timeout", elapsed)
+		}
+	})
+
+	t.Run("preserves Japanese device name", func(t *testing.T) {
+		port := startResponder(t, nil, func(query []byte) []byte {
+			response := makePTRResponse(question, question, "うめのiPhone.local", 12, 1, 0x8000)
+			copy(response[:2], query[:2])
+			return response
+		})
+		names := reverseNames(context.Background(), []netip.Addr{host}, port, netip.Addr.IsLoopback, time.Second)
+		if got := names[host]; got != "うめのiPhone" {
+			t.Fatalf("ReverseNames() name = %q, want %q", got, "うめのiPhone")
+		}
+	})
+
+	t.Run("strips uppercase local suffix", func(t *testing.T) {
+		port := startResponder(t, nil, func(query []byte) []byte {
+			response := makePTRResponse(question, question, "Phone.LOCAL", 12, 1, 0x8000)
+			copy(response[:2], query[:2])
+			return response
+		})
+		names := reverseNames(context.Background(), []netip.Addr{host}, port, netip.Addr.IsLoopback, time.Second)
+		if got := names[host]; got != "Phone" {
+			t.Fatalf("ReverseNames() name = %q, want %q", got, "Phone")
+		}
+	})
+
+	t.Run("ignores invalid UTF-8 device name", func(t *testing.T) {
+		port := startResponder(t, nil, func(query []byte) []byte {
+			response := makePTRResponse(question, question, "\x82\xa4\x82\xdfPC.local", 12, 1, 0x8000)
+			copy(response[:2], query[:2])
+			return response
+		})
+		names := reverseNames(context.Background(), []netip.Addr{host}, port, netip.Addr.IsLoopback, time.Second)
+		if _, exists := names[host]; exists {
+			t.Fatalf("ReverseNames() = %q for invalid UTF-8 target, want no entry", names[host])
 		}
 	})
 
