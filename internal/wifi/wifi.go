@@ -125,6 +125,10 @@ func ParseMacOS(jsonText []byte) Security {
 func macSecurity(mode string) Security {
 	mode = strings.ToLower(strings.TrimSpace(mode))
 	switch {
+	case strings.Contains(mode, "_mixed"):
+		return WPA1orTKIP
+	case strings.Contains(mode, "8021x"):
+		return WEP
 	case strings.Contains(mode, "wpa2"), strings.Contains(mode, "wpa3"):
 		return Modern
 	case strings.Contains(mode, "wep"):

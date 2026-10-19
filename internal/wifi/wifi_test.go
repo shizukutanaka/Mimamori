@@ -32,6 +32,11 @@ func TestParseMacOS(t *testing.T) {
 		{name: "WPA personal", mode: "spairport_security_mode_wpa_personal", want: WPA1orTKIP},
 		{name: "WPA enterprise", mode: "spairport_security_mode_wpa_enterprise", want: WPA1orTKIP},
 		{name: "WPA2 personal", mode: "spairport_security_mode_wpa2_personal", want: Modern},
+		{name: "WPA2 personal mixed", mode: "spairport_security_mode_wpa2_personal_mixed", want: WPA1orTKIP},
+		{name: "WPA2 enterprise mixed", mode: "spairport_security_mode_wpa2_enterprise_mixed", want: WPA1orTKIP},
+		{name: "802.1X dynamic WEP", mode: "spairport_security_mode_8021x", want: WEP},
+		{name: "WPA3 transition", mode: "spairport_security_mode_wpa3_transition", want: Modern},
+		{name: "WPA2 enterprise", mode: "spairport_security_mode_wpa2_enterprise", want: Modern},
 		{name: "WPA3 personal", mode: "spairport_security_mode_wpa3_personal", want: Modern},
 		{name: "unknown", mode: "spairport_security_mode_unknown", want: Unknown},
 	}
