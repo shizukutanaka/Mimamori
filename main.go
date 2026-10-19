@@ -333,7 +333,7 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 
 	findings := makeFindings(opened, discovery.responses, gatewayIP, descriptions, deviceNames, newDeviceFindings, portMappings, lang)
 	findings = append(findings, wifiFs...)
-	findings = append(findings, gatewaySpoofFindings(neighbors, gatewayIP, lang)...)
+	findings = append(findings, gatewaySpoofFindings(gatewayNeighbors(ctx, neighbors, gatewayIP, lan.ReadARP), gatewayIP, lang)...)
 	report.Sort(findings)
 	findings = append(findings, vulnerableUPnPStackFindings(discovery.responses, gatewayIP, deviceNames, lang)...)
 	report.Sort(findings)
