@@ -53,6 +53,7 @@ type output struct {
 }
 
 type checkedSummary struct {
+	Ports        bool
 	PortForwards bool
 	WiFi         bool
 }
@@ -342,6 +343,7 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 		Version: version, Score: report.Score(findings), Status: status, FirstRun: firstRun, Incomplete: incomplete,
 		WiFiLocationRequired: errors.Is(wifiCheck.err, wifi.ErrLocationPermission),
 		Checks: checkedSummary{
+			Ports:        len(scanTargets) > 0,
 			PortForwards: gatewayIP.IsValid() && portMappingQueryRan && portMappingErr == nil,
 			WiFi:         wifiCheck.err == nil && wifiCheck.security != wifi.Unknown,
 		},
@@ -939,7 +941,9 @@ func renderText(writer io.Writer, result output, lang string, lastCheckDays ...*
 	fmt.Fprintln(writer, i18n.T(lang, "score", i18n.T(lang, result.Status), result.Score))
 	checkedItems := []string{
 		i18n.T(lang, "checked_devices", i18n.CheckedDeviceCount(lang, len(result.Devices))),
-		i18n.T(lang, "checked_ports"),
+	}
+	if result.Checks.Ports {
+		checkedItems = append(checkedItems, i18n.T(lang, "checked_ports"))
 	}
 	if result.Checks.PortForwards {
 		checkedItems = append(checkedItems, i18n.T(lang, "checked_forwards"))
