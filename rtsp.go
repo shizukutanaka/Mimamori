@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"net/netip"
-	"sort"
 	"sync"
 	"time"
 
@@ -11,35 +9,40 @@ import (
 	"github.com/shizukutanaka/Mimamori/internal/rtsp"
 )
 
-func unauthenticatedRTSP(ctx context.Context, hosts []netip.Addr) []probe.Open {
-	openHosts := probe.Scan(ctx, hosts, []int{554}, 700*time.Millisecond, 128)
-	if len(openHosts) == 0 {
-		return nil
+func markUnauthenticatedRTSP(ctx context.Context, opened []probe.Open) []probe.Open {
+	candidates := make([]int, 0, len(opened))
+	for index, candidate := range opened {
+		if candidate.Port == 554 {
+			candidates = append(candidates, index)
+		}
 	}
-
 	workers := 16
-	if len(openHosts) < workers {
-		workers = len(openHosts)
+	if len(candidates) == 0 {
+		return opened
 	}
-	jobs := make(chan probe.Open)
-	results := make(chan probe.Open, len(openHosts))
+	if len(candidates) < workers {
+		workers = len(candidates)
+	}
+	jobs := make(chan int)
+	results := make(chan int, len(candidates))
 	var wait sync.WaitGroup
 	wait.Add(workers)
 	for range workers {
 		go func() {
 			defer wait.Done()
-			for candidate := range jobs {
+			for index := range jobs {
+				candidate := opened[index]
 				if rtsp.Unauthenticated(ctx, candidate.IP, candidate.Port, 2*time.Second) {
-					results <- probe.Open{IP: candidate.IP, Port: 554}
+					results <- index
 				}
 			}
 		}()
 	}
 	go func() {
 		defer close(jobs)
-		for _, candidate := range openHosts {
+		for _, index := range candidates {
 			select {
-			case jobs <- candidate:
+			case jobs <- index:
 			case <-ctx.Done():
 				return
 			}
@@ -48,12 +51,15 @@ func unauthenticatedRTSP(ctx context.Context, hosts []netip.Addr) []probe.Open {
 
 	wait.Wait()
 	close(results)
-	opened := make([]probe.Open, 0, len(results))
-	for result := range results {
-		opened = append(opened, result)
+	unauthenticated := make([]bool, len(opened))
+	for index := range results {
+		unauthenticated[index] = true
 	}
-	sort.Slice(opened, func(i, j int) bool {
-		return opened[i].IP.Less(opened[j].IP)
-	})
-	return opened
+	filtered := make([]probe.Open, 0, len(opened))
+	for index, candidate := range opened {
+		if candidate.Port != 554 || unauthenticated[index] {
+			filtered = append(filtered, candidate)
+		}
+	}
+	return filtered
 }
