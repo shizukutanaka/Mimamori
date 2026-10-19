@@ -27,8 +27,14 @@ func ParseAPIInfo(status int, body []byte) bool {
 	if err := json.Unmarshal(version, &versionString); err != nil || versionString == "" {
 		return false
 	}
-	_, ok = info["revision"]
-	return ok
+	if _, ok := info["host"]; !ok {
+		return false
+	}
+	var rtsp struct {
+		Listen *string `json:"listen"`
+	}
+	raw, ok := info["rtsp"]
+	return ok && json.Unmarshal(raw, &rtsp) == nil && rtsp.Listen != nil
 }
 
 func Unauthenticated(ctx context.Context, ip netip.Addr, port int, timeout time.Duration) bool {
