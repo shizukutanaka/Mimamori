@@ -23,6 +23,30 @@ import (
 	"github.com/shizukutanaka/Mimamori/internal/wifi"
 )
 
+func TestExitCode(t *testing.T) {
+	danger := report.Finding{Level: report.Danger}
+	caution := report.Finding{Level: report.Caution}
+	tests := []struct {
+		name              string
+		findings          []report.Finding
+		historySaveFailed bool
+		want              int
+	}{
+		{name: "danger and history save failed", findings: []report.Finding{danger}, historySaveFailed: true, want: 2},
+		{name: "caution and history save failed", findings: []report.Finding{caution}, historySaveFailed: true, want: 1},
+		{name: "danger and history saved", findings: []report.Finding{danger}, want: 2},
+		{name: "caution and history saved", findings: []report.Finding{caution}, want: 0},
+		{name: "no findings and history saved", want: 0},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := exitCode(test.findings, test.historySaveFailed); got != test.want {
+				t.Fatalf("exitCode() = %d, want %d", got, test.want)
+			}
+		})
+	}
+}
+
 func TestMakeFindings(t *testing.T) {
 	ip := netip.MustParseAddr("192.168.1.10")
 	newIP := netip.MustParseAddr("192.168.1.11")
