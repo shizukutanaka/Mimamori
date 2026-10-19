@@ -1,0 +1,110 @@
+package main
+
+import (
+	"context"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"net/netip"
+	"sync"
+	"testing"
+
+	"github.com/shizukutanaka/Mimamori/internal/probe"
+)
+
+func TestMarkUnauthenticatedWeb(t *testing.T) {
+	tests := []struct {
+		name        string
+		rootBody    string
+		shellyBody  string
+		wantService string
+		wantPaths   []string
+	}{
+		{
+			name:        "Tasmota",
+			rootBody:    `<form action='up' method='get'><a>Tasmota 14.0 by Theo Arends</a>`,
+			shellyBody:  `{"online":true}`,
+			wantService: "tasmota",
+			wantPaths:   []string{"/"},
+		},
+		{
+			name:        "Shelly",
+			rootBody:    `<html>Not Tasmota</html>`,
+			shellyBody:  `{"type":"SHSW-21","mac":"5ECF7F1632E8","auth":false}`,
+			wantService: "shelly",
+			wantPaths:   []string{"/", "/shelly"},
+		},
+		{
+			name:       "unmatched",
+			rootBody:   `<html>Unknown device</html>`,
+			shellyBody: `{"online":true}`,
+			wantPaths:  []string{"/", "/shelly"},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var pathsMu sync.Mutex
+			var paths []string
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+				pathsMu.Lock()
+				paths = append(paths, request.URL.Path)
+				pathsMu.Unlock()
+				if request.Method != http.MethodGet {
+					t.Errorf("request method = %s, want GET", request.Method)
+				}
+				body := test.rootBody
+				if request.URL.Path == "/shelly" {
+					body = test.shellyBody
+				}
+				_, _ = io.WriteString(w, body)
+			}))
+			defer server.Close()
+			address, err := netip.ParseAddrPort(server.Listener.Addr().String())
+			if err != nil {
+				t.Fatal(err)
+			}
+			ip := address.Addr()
+			candidate := probe.Open{IP: ip, Port: 80}
+			otherPort := probe.Open{IP: ip, Port: 5900}
+			got := markUnauthenticatedWebWithPort(
+				context.Background(),
+				[]probe.Open{candidate, otherPort},
+				int(address.Port()),
+			)
+			pathsMu.Lock()
+			gotPaths := append([]string(nil), paths...)
+			pathsMu.Unlock()
+			if len(gotPaths) != len(test.wantPaths) {
+				t.Fatalf("request paths = %v, want %v", gotPaths, test.wantPaths)
+			}
+			for i, path := range test.wantPaths {
+				if gotPaths[i] != path {
+					t.Errorf("request path %d = %q, want %q", i, gotPaths[i], path)
+				}
+			}
+			if test.wantService == "" {
+				if len(got) != 1 || got[0] != otherPort {
+					t.Fatalf("markUnauthenticatedWebWithPort() = %v, want only unrelated port %v", got, otherPort)
+				}
+				return
+			}
+			want := candidate
+			want.Service = test.wantService
+			if len(got) != 2 || got[0] != want || got[1] != otherPort {
+				t.Fatalf("markUnauthenticatedWebWithPort() = %v, want %v and %v", got, want, otherPort)
+			}
+		})
+	}
+}
+
+func TestMarkUnauthenticatedWebCanceledContextPreservesOtherPorts(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	ip := netip.MustParseAddr("192.0.2.10")
+	webOpen := probe.Open{IP: ip, Port: 80}
+	otherOpen := probe.Open{IP: ip, Port: 5900}
+	got := markUnauthenticatedWeb(ctx, []probe.Open{webOpen, otherOpen})
+	if len(got) != 1 || got[0] != otherOpen {
+		t.Fatalf("markUnauthenticatedWeb() = %v, want only unrelated port %v", got, otherOpen)
+	}
+}
