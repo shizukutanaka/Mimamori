@@ -1835,6 +1835,58 @@ func TestMergeHostsDeduplicatesSortsAndCaps(t *testing.T) {
 	}
 }
 
+func TestLiveSweepHosts(t *testing.T) {
+	sweep := []netip.Addr{
+		netip.MustParseAddr("192.168.1.10"),
+		netip.MustParseAddr("192.168.1.11"),
+		netip.MustParseAddr("192.168.1.12"),
+	}
+	tests := []struct {
+		name      string
+		responded map[netip.Addr]struct{}
+		neighbors []lan.Neighbor
+		arpErr    error
+		want      []netip.Addr
+	}{
+		{
+			name:   "ARP error falls back to full sweep",
+			arpErr: errors.New("ARP unavailable"),
+			want:   sweep,
+		},
+		{
+			name:      "responded only",
+			responded: map[netip.Addr]struct{}{sweep[2]: {}},
+			want:      []netip.Addr{sweep[2]},
+		},
+		{
+			name:      "ARP only",
+			neighbors: []lan.Neighbor{{IP: sweep[1], MAC: "aa:bb:cc:dd:ee:01"}},
+			want:      []netip.Addr{sweep[1]},
+		},
+		{
+			name: "neither",
+			want: []netip.Addr{},
+		},
+		{
+			name: "preserves sweep order",
+			responded: map[netip.Addr]struct{}{
+				sweep[0]: {},
+				sweep[2]: {},
+			},
+			neighbors: []lan.Neighbor{{IP: sweep[1], MAC: "aa:bb:cc:dd:ee:02"}},
+			want:      sweep,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := liveSweepHosts(sweep, test.responded, test.neighbors, test.arpErr)
+			if !reflect.DeepEqual(got, test.want) {
+				t.Fatalf("liveSweepHosts() = %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
 func TestMergeNeighborsOriginalWinsAndRefreshAdds(t *testing.T) {
 	ip1 := netip.MustParseAddr("192.168.1.1")
 	ip2 := netip.MustParseAddr("192.168.1.2")

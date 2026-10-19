@@ -39,6 +39,15 @@ func Scan(ctx context.Context, hosts []netip.Addr, ports []int, timeout time.Dur
 	return scan(ctx, hosts, ports, timeout, workers, dial)
 }
 
+// Alive dials each host once on port and returns the hosts that accepted or actively refused the connection.
+func Alive(ctx context.Context, hosts []netip.Addr, port int, timeout time.Duration, workers int) map[netip.Addr]struct{} {
+	dialer := net.Dialer{Timeout: timeout}
+	dial := func(ctx context.Context, address string) (net.Conn, error) {
+		return dialer.DialContext(ctx, "tcp", address)
+	}
+	return alive(ctx, hosts, port, timeout, workers, dial)
+}
+
 func scan(ctx context.Context, hosts []netip.Addr, ports []int, timeout time.Duration, workers int, dial dialFunc) []Open {
 	if workers < 1 {
 		workers = 1
@@ -94,6 +103,24 @@ func scan(ctx context.Context, hosts []netip.Addr, ports []int, timeout time.Dur
 		return opened[i].Port < opened[j].Port
 	})
 	return opened
+}
+
+func alive(ctx context.Context, hosts []netip.Addr, port int, _ time.Duration, workers int, dial dialFunc) map[netip.Addr]struct{} {
+	if workers < 1 {
+		workers = 1
+	}
+	targets := make([]target, 0, len(hosts))
+	for _, host := range hosts {
+		targets = append(targets, target{ip: host, port: port})
+	}
+
+	aliveHosts := make(map[netip.Addr]struct{})
+	for _, result := range scanPass(ctx, targets, workers, dial) {
+		if result.open || (result.failed && !result.timedOut) {
+			aliveHosts[result.target.ip] = struct{}{}
+		}
+	}
+	return aliveHosts
 }
 
 func scanPass(ctx context.Context, targets []target, workers int, dial dialFunc) []scanResult {

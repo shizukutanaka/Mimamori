@@ -259,7 +259,21 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 	initialHosts := collectHosts(arp.neighbors, gatewayIP, discovery.responses, scope)
 	scanTargets := initialHosts
 	if gatewayIP.IsValid() {
-		scanTargets = mergeHosts(initialHosts, scanSweepHosts(prefixes, scope, gatewayIP))
+		initial := make(map[netip.Addr]struct{}, len(initialHosts))
+		for _, host := range initialHosts {
+			initial[host] = struct{}{}
+		}
+		sweepOnly := make([]netip.Addr, 0)
+		for _, host := range scanSweepHosts(prefixes, scope, gatewayIP) {
+			if _, exists := initial[host]; !exists {
+				sweepOnly = append(sweepOnly, host)
+			}
+		}
+		if len(sweepOnly) > 0 {
+			responded := probe.Alive(ctx, sweepOnly, 80, 700*time.Millisecond, 128)
+			refreshed, err := lan.ReadARP(ctx)
+			scanTargets = mergeHosts(initialHosts, liveSweepHosts(sweepOnly, responded, refreshed, err))
+		}
 	}
 	opened := runMarkers(ctx, probe.Scan(ctx, scanTargets, scanPorts, 700*time.Millisecond, 128), serviceMarkers)
 	neighbors := arp.neighbors
@@ -547,6 +561,25 @@ func mergeHosts(hosts, swept []netip.Addr) []netip.Addr {
 		return merged[i].Less(merged[j])
 	})
 	return merged
+}
+
+func liveSweepHosts(sweep []netip.Addr, responded map[netip.Addr]struct{}, neighbors []lan.Neighbor, arpErr error) []netip.Addr {
+	if arpErr != nil {
+		return sweep
+	}
+	arpHosts := make(map[netip.Addr]struct{}, len(neighbors))
+	for _, neighbor := range neighbors {
+		arpHosts[neighbor.IP] = struct{}{}
+	}
+	live := make([]netip.Addr, 0, len(sweep))
+	for _, host := range sweep {
+		_, answered := responded[host]
+		_, inARP := arpHosts[host]
+		if answered || inARP {
+			live = append(live, host)
+		}
+	}
+	return live
 }
 
 func mergeNeighbors(original, refreshed []lan.Neighbor) []lan.Neighbor {
