@@ -45,6 +45,7 @@ type output struct {
 	Status               string           `json:"status"`
 	FirstRun             bool             `json:"first_run"`
 	Incomplete           bool             `json:"incomplete"`
+	HistoryUnavailable   bool             `json:"history_unavailable,omitempty"`
 	WiFiLocationRequired bool             `json:"wifi_location_required,omitempty"`
 	Checks               checkedSummary   `json:"-"`
 	Gateway              string           `json:"gateway"`
@@ -348,6 +349,7 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 	status := report.Status(report.Score(findings), findings)
 	result := output{
 		Version: version, Score: report.Score(findings), Status: status, FirstRun: firstRun, Incomplete: incomplete,
+		HistoryUnavailable:   loadState == historyLoadUnavailable,
 		WiFiLocationRequired: errors.Is(wifiCheck.err, wifi.ErrLocationPermission),
 		Checks: checkedSummary{
 			Ports:        len(scanTargets) > 0,
@@ -1009,7 +1011,11 @@ func renderText(writer io.Writer, result output, lang string, lastCheckDays ...*
 		fmt.Fprintln(writer, line)
 	}
 	if result.FirstRun {
-		fmt.Fprintf(writer, "\n%s\n", i18n.T(lang, "first_run"))
+		key := "first_run"
+		if result.HistoryUnavailable {
+			key = "history_unavailable"
+		}
+		fmt.Fprintf(writer, "\n%s\n", i18n.T(lang, key))
 	}
 	if len(result.Findings) == 0 {
 		fmt.Fprintf(writer, "\n%s\n", i18n.T(lang, "no_problems"))

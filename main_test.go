@@ -1303,6 +1303,60 @@ func TestWriteOutputIncludesIncompleteJSON(t *testing.T) {
 	}
 }
 
+func TestWriteOutputHistoryUnavailableText(t *testing.T) {
+	var buffer bytes.Buffer
+	result := output{FirstRun: true, HistoryUnavailable: true}
+	if err := writeOutput(&buffer, result, false, "ja"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buffer.String(), i18n.T("ja", "history_unavailable")) {
+		t.Fatalf("text output = %q, missing history-unavailable message", buffer.String())
+	}
+	if strings.Contains(buffer.String(), i18n.T("ja", "first_run")) {
+		t.Fatalf("text output = %q, includes first-run message", buffer.String())
+	}
+}
+
+func TestWriteOutputFirstRunText(t *testing.T) {
+	var buffer bytes.Buffer
+	if err := writeOutput(&buffer, output{FirstRun: true}, false, "ja"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buffer.String(), i18n.T("ja", "first_run")) {
+		t.Fatalf("text output = %q, missing first-run message", buffer.String())
+	}
+}
+
+func TestWriteOutputHistoryUnavailableJSON(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		unavailable bool
+		wantPresent bool
+	}{
+		{name: "true is included", unavailable: true, wantPresent: true},
+		{name: "false is omitted", unavailable: false, wantPresent: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var buffer bytes.Buffer
+			result := output{HistoryUnavailable: test.unavailable}
+			if err := writeOutput(&buffer, result, true, "ja"); err != nil {
+				t.Fatal(err)
+			}
+			var encoded map[string]any
+			if err := json.Unmarshal(buffer.Bytes(), &encoded); err != nil {
+				t.Fatal(err)
+			}
+			value, present := encoded["history_unavailable"]
+			if present != test.wantPresent {
+				t.Fatalf("JSON key presence = %t, want %t", present, test.wantPresent)
+			}
+			if test.wantPresent && value != true {
+				t.Fatalf("JSON history_unavailable = %#v, want true", value)
+			}
+		})
+	}
+}
+
 func TestRenderTextCheckedLine(t *testing.T) {
 	tests := []struct {
 		name   string
