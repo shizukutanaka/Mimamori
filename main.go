@@ -238,8 +238,6 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 		incomplete = true
 	}
 
-	initialHosts := collectHosts(arp.neighbors, gatewayIP, discovery.responses)
-	scanTargets := initialHosts
 	var prefixes []netip.Prefix
 	prefixesFailed := false
 	if gatewayIP.IsValid() {
@@ -250,7 +248,15 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 			incomplete = true
 			prefixesFailed = true
 		}
-		scanTargets = mergeHosts(initialHosts, lan.SweepHosts(prefixes, gatewayIP))
+	}
+	scope := scanScope(arp.neighbors, prefixes, gatewayIP)
+	if prefixesFailed {
+		scope = nil
+	}
+	initialHosts := collectHosts(arp.neighbors, gatewayIP, discovery.responses, scope)
+	scanTargets := initialHosts
+	if gatewayIP.IsValid() {
+		scanTargets = mergeHosts(initialHosts, scanSweepHosts(prefixes, scope, gatewayIP))
 	}
 	opened := markSMB1(ctx, probe.Scan(ctx, scanTargets, []int{23, 2323, 21, 5900, 5555, 445, 554, 1883}, 700*time.Millisecond, 128))
 	opened = markUnauthenticatedRTSP(ctx, opened)
@@ -469,19 +475,34 @@ func gatewayString(ip netip.Addr) string {
 	return ip.String()
 }
 
-func collectHosts(neighbors []lan.Neighbor, gateway netip.Addr, responses []ssdp.Response) []netip.Addr {
+func collectHosts(neighbors []lan.Neighbor, gateway netip.Addr, responses []ssdp.Response, scope []netip.Prefix) []netip.Addr {
 	hosts := make(map[netip.Addr]struct{})
 	add := func(ip netip.Addr) {
 		if ip.Is4() && ip.IsPrivate() && len(hosts) < maxScanHosts {
 			hosts[ip] = struct{}{}
 		}
 	}
+	inScope := func(ip netip.Addr) bool {
+		if len(scope) == 0 {
+			return true
+		}
+		for _, prefix := range scope {
+			if prefix.Contains(ip) {
+				return true
+			}
+		}
+		return false
+	}
 	for _, neighbor := range neighbors {
-		add(neighbor.IP)
+		if inScope(neighbor.IP) {
+			add(neighbor.IP)
+		}
 	}
 	add(gateway)
 	for _, response := range responses {
-		add(response.IP)
+		if inScope(response.IP) {
+			add(response.IP)
+		}
 	}
 	result := make([]netip.Addr, 0, len(hosts))
 	for ip := range hosts {
@@ -539,7 +560,7 @@ func mergeNeighbors(original, refreshed []lan.Neighbor) []lan.Neighbor {
 }
 
 func deviceHosts(neighbors []lan.Neighbor, gateway netip.Addr, responses []ssdp.Response, opened []probe.Open) []netip.Addr {
-	hosts := collectHosts(neighbors, gateway, responses)
+	hosts := collectHosts(neighbors, gateway, responses, nil)
 	seen := make(map[netip.Addr]struct{}, len(hosts)+len(opened))
 	for _, host := range hosts {
 		seen[host] = struct{}{}

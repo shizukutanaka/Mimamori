@@ -1027,7 +1027,7 @@ func TestCollectHostsFiltersAndCaps(t *testing.T) {
 		neighbors[i].IP = netip.AddrFrom4([4]byte{10, 0, byte(i >> 8), byte(i)})
 	}
 	neighbors = append(neighbors, lan.Neighbor{IP: netip.MustParseAddr("8.8.8.8")})
-	got := collectHosts(neighbors, netip.MustParseAddr("192.168.1.1"), []ssdp.Response{{IP: netip.MustParseAddr("172.16.0.1")}})
+	got := collectHosts(neighbors, netip.MustParseAddr("192.168.1.1"), []ssdp.Response{{IP: netip.MustParseAddr("172.16.0.1")}}, nil)
 	if len(got) != 1024 {
 		t.Fatalf("collectHosts() returned %d hosts", len(got))
 	}
@@ -1035,6 +1035,33 @@ func TestCollectHostsFiltersAndCaps(t *testing.T) {
 		if !got[i-1].Less(got[i]) {
 			t.Fatalf("hosts are not sorted: %v before %v", got[i-1], got[i])
 		}
+	}
+}
+
+func TestCollectHostsSkipsOtherInterfaceSubnets(t *testing.T) {
+	gateway := netip.MustParseAddr("192.168.1.1")
+	prefixes := []netip.Prefix{
+		netip.MustParsePrefix("192.168.1.10/24"),
+		netip.MustParsePrefix("10.0.0.5/24"),
+	}
+	scope := homePrefixes(prefixes, gateway)
+	neighbors := []lan.Neighbor{
+		{IP: netip.MustParseAddr("192.168.1.20")},
+		{IP: netip.MustParseAddr("10.0.0.7")},
+		{IP: netip.MustParseAddr("172.20.10.2")},
+	}
+	responses := []ssdp.Response{
+		{IP: netip.MustParseAddr("10.0.0.9")},
+		{IP: netip.MustParseAddr("192.168.1.30")},
+	}
+	got := collectHosts(neighbors, gateway, responses, scope)
+	want := []netip.Addr{
+		gateway,
+		netip.MustParseAddr("192.168.1.20"),
+		netip.MustParseAddr("192.168.1.30"),
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("collectHosts() = %v, want %v", got, want)
 	}
 }
 
@@ -1103,7 +1130,7 @@ func TestDeviceHostsIncludesOnlyObservedSweptHosts(t *testing.T) {
 	gateway := netip.MustParseAddr("192.168.1.1")
 	neighbors := []lan.Neighbor{{IP: gateway, MAC: "aa:bb:cc:dd:ee:ff"}}
 	scanTargets := mergeHosts(
-		collectHosts(neighbors, gateway, nil),
+		collectHosts(neighbors, gateway, nil, nil),
 		lan.SweepHosts([]netip.Prefix{netip.MustParsePrefix("192.168.1.23/24")}, gateway),
 	)
 	if len(scanTargets) != 253 {
@@ -1208,7 +1235,7 @@ func TestScanObservedNetwork(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			if test.gateway.IsValid() {
-				if hosts := collectHosts(test.neighbors, test.gateway, test.responses); len(hosts) != 1 {
+				if hosts := collectHosts(test.neighbors, test.gateway, test.responses, nil); len(hosts) != 1 {
 					t.Fatalf("gateway-only scan hosts = %v, want only the gateway", hosts)
 				}
 			}
