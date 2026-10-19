@@ -139,25 +139,38 @@ func macSecurity(mode string) Security {
 }
 
 func ParseNmcli(text string) Security {
+	var results []Security
 	for _, line := range strings.Split(text, "\n") {
 		line = strings.TrimSpace(strings.TrimSuffix(line, "\r"))
 		if strings.HasPrefix(line, "yes:") {
-			security := strings.ToUpper(strings.TrimSpace(strings.TrimPrefix(line, "yes:")))
-			switch {
-			case security == "":
-				return Open
-			case strings.Contains(security, "WEP"):
-				return WEP
-			case strings.Contains(security, "WPA1"), strings.Contains(security, "TKIP"):
-				return WPA1orTKIP
-			case strings.Contains(security, "WPA2"), strings.Contains(security, "WPA3"):
-				return Modern
-			default:
+			results = append(results, nmcliSecurity(strings.TrimPrefix(line, "yes:")))
+		}
+	}
+	worst := worstSecurity(results)
+	if worst == Modern {
+		for _, result := range results {
+			if result == Unknown {
 				return Unknown
 			}
 		}
 	}
-	return Unknown
+	return worst
+}
+
+func nmcliSecurity(security string) Security {
+	security = strings.ToUpper(strings.TrimSpace(security))
+	switch {
+	case security == "":
+		return Open
+	case strings.Contains(security, "WEP"):
+		return WEP
+	case strings.Contains(security, "WPA1"), strings.Contains(security, "TKIP"):
+		return WPA1orTKIP
+	case strings.Contains(security, "WPA2"), strings.Contains(security, "WPA3"):
+		return Modern
+	default:
+		return Unknown
+	}
 }
 
 func wpaCliSecurity(ctx context.Context) (Security, error) {
