@@ -46,16 +46,16 @@ type output struct {
 	FirstRun             bool             `json:"first_run"`
 	Incomplete           bool             `json:"incomplete"`
 	WiFiLocationRequired bool             `json:"wifi_location_required,omitempty"`
-	Checks               checkedSummary   `json:"-"`
+	Checks               checkedSummary   `json:"checked"`
 	Gateway              string           `json:"gateway"`
 	Devices              []deviceOutput   `json:"devices"`
 	Findings             []report.Finding `json:"findings"`
 }
 
 type checkedSummary struct {
-	Ports        bool
-	PortForwards bool
-	WiFi         bool
+	Ports        bool `json:"ports"`
+	PortForwards bool `json:"port_forwards"`
+	WiFi         bool `json:"wifi"`
 }
 
 type historyLoadState uint8
