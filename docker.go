@@ -12,7 +12,7 @@ import (
 func markUnauthenticatedDocker(ctx context.Context, opened []probe.Open) []probe.Open {
 	candidates := make([]int, 0, len(opened))
 	for index, candidate := range opened {
-		if candidate.Port == 2375 {
+		if candidate.Port == 2375 || candidate.Port == 2376 {
 			candidates = append(candidates, index)
 		}
 	}
@@ -32,7 +32,9 @@ func markUnauthenticatedDocker(ctx context.Context, opened []probe.Open) []probe
 			defer wait.Done()
 			for index := range jobs {
 				candidate := opened[index]
-				if docker.Unauthenticated(ctx, candidate.IP, candidate.Port, 2*time.Second) {
+				isUnauthenticated := candidate.Port == 2375 && docker.Unauthenticated(ctx, candidate.IP, candidate.Port, 2*time.Second)
+				isUnauthenticated = isUnauthenticated || candidate.Port == 2376 && docker.UnauthenticatedTLS(ctx, candidate.IP, candidate.Port, 2*time.Second)
+				if isUnauthenticated {
 					results <- index
 				}
 			}
@@ -57,7 +59,7 @@ func markUnauthenticatedDocker(ctx context.Context, opened []probe.Open) []probe
 	}
 	filtered := make([]probe.Open, 0, len(opened))
 	for index, candidate := range opened {
-		if candidate.Port != 2375 || unauthenticated[index] {
+		if (candidate.Port != 2375 && candidate.Port != 2376) || unauthenticated[index] {
 			filtered = append(filtered, candidate)
 		}
 	}

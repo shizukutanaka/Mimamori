@@ -2,6 +2,7 @@ package docker
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -30,17 +31,29 @@ func ParseVersion(body []byte) bool {
 }
 
 func Unauthenticated(ctx context.Context, ip netip.Addr, port int, timeout time.Duration) bool {
+	return probeVersion(ctx, ip, port, timeout, "http", &http.Transport{Proxy: nil, DisableKeepAlives: true})
+}
+
+func UnauthenticatedTLS(ctx context.Context, ip netip.Addr, port int, timeout time.Duration) bool {
+	return probeVersion(ctx, ip, port, timeout, "https", &http.Transport{
+		Proxy:             nil,
+		DisableKeepAlives: true,
+		TLSClientConfig:   &tls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS12},
+	})
+}
+
+func probeVersion(ctx context.Context, ip netip.Addr, port int, timeout time.Duration, scheme string, transport *http.Transport) bool {
 	if ctx == nil || !ip.Is4() || port < 1 || port > 65535 || timeout <= 0 {
 		return false
 	}
 	address := netip.AddrPortFrom(ip, uint16(port)).String()
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+address+"/version", nil)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, scheme+"://"+address+"/version", nil)
 	if err != nil {
 		return false
 	}
 	client := &http.Client{
 		Timeout:   timeout,
-		Transport: &http.Transport{Proxy: nil, DisableKeepAlives: true},
+		Transport: transport,
 		CheckRedirect: func(*http.Request, []*http.Request) error {
 			return http.ErrUseLastResponse
 		},

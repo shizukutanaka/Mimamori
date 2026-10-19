@@ -424,6 +424,34 @@ func TestDockerNoAuthFinding(t *testing.T) {
 	}
 }
 
+func TestDockerTLSNoVerifyFinding(t *testing.T) {
+	ip := netip.MustParseAddr("192.168.1.10")
+	deviceName := "Home Server"
+	findings := makeFindings(
+		[]probe.Open{{IP: ip, Port: 2376}},
+		nil,
+		netip.Addr{},
+		map[netip.Addr]ssdp.Description{},
+		map[netip.Addr]string{ip: deviceName},
+		nil,
+		nil,
+		"en",
+	)
+	if len(findings) != 1 {
+		t.Fatalf("makeFindings() returned %d findings, want one: %#v", len(findings), findings)
+	}
+	finding := findings[0]
+	if finding.ID != "docker_tls_noverify" || finding.Level != report.Danger || finding.Points != 25 {
+		t.Fatalf("Docker TLS finding = %#v, want docker_tls_noverify/Danger/25", finding)
+	}
+	if finding.IP != ip.String() || finding.Device != deviceName {
+		t.Fatalf("Docker TLS finding target = %#v, want IP %s and device %q", finding, ip, deviceName)
+	}
+	if finding.Message != i18n.T("en", "docker_tls_noverify", deviceName) || finding.Fix != i18n.T("en", "docker_tls_noverify_fix") {
+		t.Fatalf("Docker TLS finding text = %#v, want localized message and fix", finding)
+	}
+}
+
 func TestHomeAssistantOnboardingFinding(t *testing.T) {
 	ip := netip.MustParseAddr("192.168.1.10")
 	deviceName := "Home Assistant"

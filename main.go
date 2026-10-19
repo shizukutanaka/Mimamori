@@ -259,7 +259,7 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 	if gatewayIP.IsValid() {
 		scanTargets = mergeHosts(initialHosts, scanSweepHosts(prefixes, scope, gatewayIP))
 	}
-	opened := markSMB1(ctx, probe.Scan(ctx, scanTargets, []int{23, 2323, 21, 5900, 5555, 445, 554, 8554, 1883, 1984, 5000, 1880, 6052, 2375, 8123}, 700*time.Millisecond, 128))
+	opened := markSMB1(ctx, probe.Scan(ctx, scanTargets, []int{23, 2323, 21, 5900, 5555, 445, 554, 8554, 1883, 1984, 5000, 1880, 6052, 2375, 8123, 2376}, 700*time.Millisecond, 128))
 	opened = markUnauthenticatedRTSP(ctx, opened)
 	opened = markUnauthenticatedMQTT(ctx, opened)
 	opened = markUnauthenticatedGo2RTC(ctx, opened)
@@ -906,6 +906,8 @@ func makeFindings(
 			findings = append(findings, report.Finding{ID: "esphome_noauth", Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name})
 		case 2375:
 			findings = append(findings, report.Finding{ID: "docker_noauth", Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name})
+		case 2376:
+			findings = append(findings, report.Finding{ID: "docker_tls_noverify", Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name})
 		case 8123:
 			findings = append(findings, report.Finding{ID: "homeassistant_onboarding", Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name})
 		case 23, 2323:
@@ -1041,6 +1043,9 @@ func makeFindings(
 			finding.Message = i18n.T(lang, finding.ID, finding.Device)
 		}
 		if finding.ID == "docker_noauth" {
+			finding.Message = i18n.T(lang, finding.ID, finding.Device)
+		}
+		if finding.ID == "docker_tls_noverify" {
 			finding.Message = i18n.T(lang, finding.ID, finding.Device)
 		}
 		if finding.ID == "homeassistant_onboarding" {

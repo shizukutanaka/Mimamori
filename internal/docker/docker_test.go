@@ -2,6 +2,7 @@ package docker
 
 import (
 	"context"
+	"crypto/tls"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -76,5 +77,73 @@ func TestUnauthenticated(t *testing.T) {
 				t.Fatalf("request count = %d, want exactly one", got)
 			}
 		})
+	}
+}
+
+func TestUnauthenticatedTLS(t *testing.T) {
+	tests := []struct {
+		name     string
+		status   int
+		body     string
+		location string
+		want     bool
+	}{
+		{name: "unauthenticated Docker version over TLS", status: http.StatusOK, body: modernVersion, want: true},
+		{name: "authentication required", status: http.StatusUnauthorized, body: `{"message":"Unauthorized"}`},
+		{name: "non-Docker JSON", status: http.StatusOK, body: `{"version":"27.5.1"}`},
+		{name: "redirect", status: http.StatusFound, body: `<html>Redirecting</html>`, location: "/login"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var requests atomic.Int32
+			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+				requests.Add(1)
+				if request.Method != http.MethodGet || request.URL.Path != "/version" {
+					t.Errorf("request = %s %s, want GET /version", request.Method, request.URL.Path)
+				}
+				if test.location != "" {
+					w.Header().Set("Location", test.location)
+				}
+				w.WriteHeader(test.status)
+				_, _ = w.Write([]byte(test.body))
+			}))
+			defer server.Close()
+			port := server.Listener.Addr().(*net.TCPAddr).Port
+			if got := UnauthenticatedTLS(context.Background(), netip.MustParseAddr("127.0.0.1"), port, time.Second); got != test.want {
+				t.Fatalf("UnauthenticatedTLS() = %t, want %t", got, test.want)
+			}
+			if got := requests.Load(); got != 1 {
+				t.Fatalf("request count = %d, want exactly one", got)
+			}
+		})
+	}
+}
+
+func TestUnauthenticatedTLSRequiresNoClientCertificate(t *testing.T) {
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(modernVersion))
+	}))
+	server.TLS = &tls.Config{
+		ClientAuth: tls.RequireAndVerifyClientCert,
+		MinVersion: tls.VersionTLS13,
+	}
+	server.StartTLS()
+	defer server.Close()
+	port := server.Listener.Addr().(*net.TCPAddr).Port
+	if got := UnauthenticatedTLS(context.Background(), netip.MustParseAddr("127.0.0.1"), port, time.Second); got {
+		t.Fatal("UnauthenticatedTLS() = true, want false when a client certificate is required")
+	}
+}
+
+func TestUnauthenticatedTLSRejectsPlainHTTP(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(modernVersion))
+	}))
+	defer server.Close()
+	port := server.Listener.Addr().(*net.TCPAddr).Port
+	if got := UnauthenticatedTLS(context.Background(), netip.MustParseAddr("127.0.0.1"), port, time.Second); got {
+		t.Fatal("UnauthenticatedTLS() = true for a plain HTTP server, want false")
 	}
 }

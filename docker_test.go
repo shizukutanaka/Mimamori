@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"net/netip"
 	"testing"
 	"time"
@@ -54,6 +56,54 @@ func TestMarkUnauthenticatedDocker(t *testing.T) {
 	}
 }
 
+func TestMarkUnauthenticatedDockerTLS(t *testing.T) {
+	tests := []struct {
+		name                     string
+		requireClientCertificate bool
+		want                     bool
+	}{
+		{name: "unauthenticated TLS Docker API is kept", want: true},
+		{name: "client certificate is required and the API is dropped", requireClientCertificate: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			requests := startDockerTLSTestServer(t, test.requireClientCertificate, validDockerVersion)
+			dockerOpen := probe.Open{IP: netip.MustParseAddr("127.0.0.1"), Port: 2376}
+			otherPort := probe.Open{IP: dockerOpen.IP, Port: 5900}
+			opened := []probe.Open{dockerOpen, otherPort}
+			want := []probe.Open{otherPort}
+			if test.want {
+				want = opened
+			}
+			got := markUnauthenticatedDocker(context.Background(), opened)
+			if len(got) != len(want) {
+				t.Fatalf("markUnauthenticatedDocker() returned %v, want %v", got, want)
+			}
+			for index := range want {
+				if got[index] != want[index] {
+					t.Fatalf("markUnauthenticatedDocker() returned %v, want %v", got, want)
+				}
+			}
+			if test.want {
+				select {
+				case request := <-requests:
+					if request != "GET /version" {
+						t.Fatalf("request = %q, want GET /version", request)
+					}
+				case <-time.After(time.Second):
+					t.Fatal("TLS Docker fake server received no request")
+				}
+			} else {
+				select {
+				case request := <-requests:
+					t.Fatalf("client-certificate-required server received unexpected request %q", request)
+				default:
+				}
+			}
+		})
+	}
+}
+
 func startDockerTestServer(t *testing.T, status int, body string) (probe.Open, <-chan string) {
 	t.Helper()
 	const address = "127.0.0.1"
@@ -81,4 +131,33 @@ func startDockerTestServer(t *testing.T, status int, body string) (probe.Open, <
 		}
 	})
 	return probe.Open{IP: netip.MustParseAddr(address), Port: 2375}, requests
+}
+
+func startDockerTLSTestServer(t *testing.T, requireClientCertificate bool, body string) <-chan string {
+	t.Helper()
+	const address = "127.0.0.1"
+	listener, err := net.Listen("tcp4", net.JoinHostPort(address, "2376"))
+	if err != nil {
+		t.Skipf("cannot listen on %s:2376: %v", address, err)
+	}
+	requests := make(chan string, 1)
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		requests <- request.Method + " " + request.URL.Path
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(body))
+	}))
+	if err := server.Listener.Close(); err != nil {
+		_ = listener.Close()
+		t.Fatalf("close default TLS test listener: %v", err)
+	}
+	server.Listener = listener
+	if requireClientCertificate {
+		server.TLS = &tls.Config{
+			ClientAuth: tls.RequireAndVerifyClientCert,
+			MinVersion: tls.VersionTLS13,
+		}
+	}
+	server.StartTLS()
+	t.Cleanup(server.Close)
+	return requests
 }
