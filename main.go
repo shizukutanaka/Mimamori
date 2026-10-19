@@ -247,8 +247,8 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 		}
 		scanTargets = mergeHosts(initialHosts, lan.SweepHosts(prefixes, gatewayIP))
 	}
-	opened := probe.Scan(ctx, scanTargets, []int{23, 2323, 21, 5900, 5555}, 700*time.Millisecond, 128)
-	opened = append(opened, unauthenticatedMQTT(ctx, scanTargets)...)
+	opened := probe.Scan(ctx, scanTargets, []int{23, 2323, 21, 5900, 5555, 1883}, 700*time.Millisecond, 128)
+	opened = markUnauthenticatedMQTT(ctx, opened)
 	neighbors := arp.neighbors
 	if len(scanTargets) > len(initialHosts) {
 		refreshed, err := lan.ReadARP(ctx)
