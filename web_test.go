@@ -17,6 +17,7 @@ func TestMarkUnauthenticatedWeb(t *testing.T) {
 		name        string
 		rootBody    string
 		shellyBody  string
+		wledBody    string
 		wantService string
 		wantPaths   []string
 	}{
@@ -35,10 +36,19 @@ func TestMarkUnauthenticatedWeb(t *testing.T) {
 			wantPaths:   []string{"/", "/shelly"},
 		},
 		{
+			name:        "WLED",
+			rootBody:    `<html>Unknown device</html>`,
+			shellyBody:  `{"online":true}`,
+			wledBody:    `{"ver":"0.15.0","vid":2406170,"leds":{"count":1}}`,
+			wantService: "wled",
+			wantPaths:   []string{"/", "/shelly", "/json/info", "/update"},
+		},
+		{
 			name:       "unmatched",
 			rootBody:   `<html>Unknown device</html>`,
 			shellyBody: `{"online":true}`,
-			wantPaths:  []string{"/", "/shelly"},
+			wledBody:   `{"online":true}`,
+			wantPaths:  []string{"/", "/shelly", "/json/info"},
 		},
 	}
 	for _, test := range tests {
@@ -53,8 +63,13 @@ func TestMarkUnauthenticatedWeb(t *testing.T) {
 					t.Errorf("request method = %s, want GET", request.Method)
 				}
 				body := test.rootBody
-				if request.URL.Path == "/shelly" {
+				switch request.URL.Path {
+				case "/shelly":
 					body = test.shellyBody
+				case "/json/info":
+					body = test.wledBody
+				case "/update":
+					body = ""
 				}
 				_, _ = io.WriteString(w, body)
 			}))

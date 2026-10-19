@@ -921,6 +921,8 @@ func makeFindings(
 			service := "tasmota_noauth"
 			if item.Service == "shelly" {
 				service = "shelly_noauth"
+			} else if item.Service == "wled" {
+				service = "wled_noauth"
 			}
 			findings = append(findings, report.Finding{ID: service, Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name})
 		case 23, 2323:
@@ -1074,6 +1076,9 @@ func makeFindings(
 			finding.Message = i18n.T(lang, finding.ID, finding.Device)
 		}
 		if finding.ID == "shelly_noauth" {
+			finding.Message = i18n.T(lang, finding.ID, finding.Device)
+		}
+		if finding.ID == "wled_noauth" {
 			finding.Message = i18n.T(lang, finding.ID, finding.Device)
 		}
 	}

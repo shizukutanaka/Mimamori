@@ -9,6 +9,7 @@ import (
 	"github.com/shizukutanaka/Mimamori/internal/probe"
 	"github.com/shizukutanaka/Mimamori/internal/shelly"
 	"github.com/shizukutanaka/Mimamori/internal/tasmota"
+	"github.com/shizukutanaka/Mimamori/internal/wled"
 )
 
 func markUnauthenticatedWeb(ctx context.Context, opened []probe.Open) []probe.Open {
@@ -85,6 +86,9 @@ func classifyUnauthenticatedWeb(ctx context.Context, ip netip.Addr, port int) st
 	}
 	if shelly.Unauthenticated(ctx, ip, port, 3*time.Second) {
 		return "shelly"
+	}
+	if wled.Unauthenticated(ctx, ip, port, 3*time.Second) {
+		return "wled"
 	}
 	return ""
 }
