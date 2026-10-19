@@ -73,11 +73,22 @@ func Current(ctx context.Context) (Security, error) {
 
 	switch runtime.GOOS {
 	case "darwin":
-		return ParseMacOS(output), nil
+		return macSecurityResult(output)
 	case "linux":
 		security := ParseNmcli(string(output))
 		if security == Unknown {
 			return wpaCliSecurity(commandContext)
+		}
+		if security == Modern {
+			flagsCommand := exec.CommandContext(commandContext, "nmcli", "-t", "-f", "ACTIVE,RSN-FLAGS", "dev", "wifi")
+			flagsCommand.Env = withLCAllC(os.Environ())
+			flagsOutput, err := flagsCommand.Output()
+			if ctx.Err() != nil {
+				return Unknown, ctx.Err()
+			}
+			if err == nil && NmcliAllowsTKIP(string(flagsOutput)) {
+				return WPA1orTKIP, nil
+			}
 		}
 		return security, nil
 	case "windows":
@@ -125,6 +136,10 @@ func ParseMacOS(jsonText []byte) Security {
 func macSecurity(mode string) Security {
 	mode = strings.ToLower(strings.TrimSpace(mode))
 	switch {
+	case strings.Contains(mode, "_mixed"):
+		return WPA1orTKIP
+	case strings.Contains(mode, "8021x"):
+		return WEP
 	case strings.Contains(mode, "wpa2"), strings.Contains(mode, "wpa3"):
 		return Modern
 	case strings.Contains(mode, "wep"):
@@ -139,31 +154,45 @@ func macSecurity(mode string) Security {
 }
 
 func ParseNmcli(text string) Security {
+	var results []Security
 	for _, line := range strings.Split(text, "\n") {
 		line = strings.TrimSpace(strings.TrimSuffix(line, "\r"))
 		if strings.HasPrefix(line, "yes:") {
-			security := strings.ToUpper(strings.TrimSpace(strings.TrimPrefix(line, "yes:")))
-			switch {
-			case security == "":
-				return Open
-			case strings.Contains(security, "WEP"):
-				return WEP
-			case strings.Contains(security, "WPA1"), strings.Contains(security, "TKIP"):
-				return WPA1orTKIP
-			case strings.Contains(security, "WPA2"), strings.Contains(security, "WPA3"):
-				return Modern
-			default:
+			results = append(results, nmcliSecurity(strings.TrimPrefix(line, "yes:")))
+		}
+	}
+	worst := worstSecurity(results)
+	if worst == Modern {
+		for _, result := range results {
+			if result == Unknown {
 				return Unknown
 			}
 		}
 	}
-	return Unknown
+	return worst
+}
+
+func nmcliSecurity(security string) Security {
+	security = strings.ToUpper(strings.TrimSpace(security))
+	switch {
+	case security == "":
+		return Open
+	case strings.Contains(security, "WEP"):
+		return WEP
+	case strings.Contains(security, "WPA1"), strings.Contains(security, "TKIP"):
+		return WPA1orTKIP
+	case strings.Contains(security, "WPA2"), strings.Contains(security, "WPA3"):
+		return Modern
+	default:
+		return Unknown
+	}
 }
 
 func wpaCliSecurity(ctx context.Context) (Security, error) {
 	interfaces := supplicantInterfaces([]string{"/run/wpa_supplicant", "/var/run/wpa_supplicant"})
 	if len(interfaces) == 0 {
-		return wpaCliStatus(ctx, "status")
+		security, err := wpaCliStatus(ctx, "status")
+		return unreadableIfConnected("/sys/class/net", security, err)
 	}
 
 	results := make([]Security, 0, len(interfaces))
@@ -174,7 +203,7 @@ func wpaCliSecurity(ctx context.Context) (Security, error) {
 		}
 		results = append(results, security)
 	}
-	return worstSecurity(results), nil
+	return unreadableIfConnected("/sys/class/net", worstSecurity(results), nil)
 }
 
 type supplicantInterface struct {
@@ -302,6 +331,21 @@ func ParseWPACli(text string) Security {
 		return Modern
 	}
 	return Unknown
+}
+
+func NmcliAllowsTKIP(text string) bool {
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(strings.TrimSuffix(line, "\r"))
+		if !strings.HasPrefix(line, "yes:") {
+			continue
+		}
+		for _, flag := range strings.Fields(strings.TrimPrefix(line, "yes:")) {
+			if strings.EqualFold(flag, "pair_tkip") || strings.EqualFold(flag, "group_tkip") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func ParseNetsh(text string) Security {

@@ -102,12 +102,12 @@ func PortMappings(ctx context.Context, client *http.Client, controlURL, serviceT
 			}
 			enabled := strings.TrimSpace(entry.Enabled)
 			mappings = append(mappings, PortMapping{
-				RemoteHost:     entry.RemoteHost,
+				RemoteHost:     strings.TrimSpace(entry.RemoteHost),
 				ExternalPort:   entry.ExternalPort,
-				Protocol:       entry.Protocol,
+				Protocol:       strings.TrimSpace(entry.Protocol),
 				InternalPort:   entry.InternalPort,
-				InternalClient: entry.InternalClient,
-				Enabled:        enabled == "1" || strings.EqualFold(enabled, "true"),
+				InternalClient: strings.TrimSpace(entry.InternalClient),
+				Enabled:        enabled == "1" || strings.EqualFold(enabled, "true") || strings.EqualFold(enabled, "yes"),
 				Description:    entry.Description,
 			})
 			continue

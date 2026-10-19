@@ -45,17 +45,18 @@ type output struct {
 	Status               string           `json:"status"`
 	FirstRun             bool             `json:"first_run"`
 	Incomplete           bool             `json:"incomplete"`
+	HistoryUnavailable   bool             `json:"history_unavailable,omitempty"`
 	WiFiLocationRequired bool             `json:"wifi_location_required,omitempty"`
-	Checks               checkedSummary   `json:"-"`
+	Checks               checkedSummary   `json:"checked"`
 	Gateway              string           `json:"gateway"`
 	Devices              []deviceOutput   `json:"devices"`
 	Findings             []report.Finding `json:"findings"`
 }
 
 type checkedSummary struct {
-	Ports        bool
-	PortForwards bool
-	WiFi         bool
+	Ports        bool `json:"ports"`
+	PortForwards bool `json:"port_forwards"`
+	WiFi         bool `json:"wifi"`
 }
 
 type historyLoadState uint8
@@ -167,12 +168,11 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 		fmt.Fprintln(stderr, i18n.T(pre, "wait_negative"))
 		return earlyRunResult(1, pre, *jsonOutput)
 	}
+	var statePathErr error
 	if *statePath == "" {
-		var err error
-		*statePath, err = baseline.DefaultPath()
-		if err != nil {
-			fmt.Fprintf(stderr, "warning: cannot determine state path: %v\n", err)
-			return finish(1)
+		*statePath, statePathErr = baseline.DefaultPath()
+		if statePathErr != nil {
+			fmt.Fprintf(stderr, "warning: cannot determine state path: %v\n", statePathErr)
 		}
 	}
 
@@ -226,20 +226,18 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 	}
 
 	httpClient := newUPnPHTTPClient()
-	descriptions, descriptionErrors := fetchDescriptions(ctx, httpClient, discovery.responses)
+	descriptions, descriptionErrors := fetchDescriptions(ctx, httpClient, discovery.responses, gatewayIP)
 	for _, err := range descriptionErrors {
-		fmt.Fprintf(stderr, "warning: cannot read a device description: %v\n", err)
+		fmt.Fprintf(stderr, "warning: cannot read a device description: %s\n", stripUnsafeRunes(err.Error()))
 	}
 	incomplete = arp.err != nil || gateway.err != nil || discovery.err != nil || wifiCheck.err != nil || len(descriptionErrors) > 0
 	wifiFs := wifiFindings(wifiCheck.security, lang)
 	portMappings, portMappingQueryRan, portMappingErr := fetchPortMappings(ctx, httpClient, gatewayIP, discovery.responses, descriptions)
 	if portMappingErr != nil {
-		fmt.Fprintf(stderr, "warning: cannot read the router's port forwarding list: %v\n", portMappingErr)
+		fmt.Fprintf(stderr, "warning: cannot read the router's port forwarding list: %s\n", portMappingWarning(portMappingErr))
 		incomplete = true
 	}
 
-	initialHosts := collectHosts(arp.neighbors, gatewayIP, discovery.responses)
-	scanTargets := initialHosts
 	var prefixes []netip.Prefix
 	prefixesFailed := false
 	if gatewayIP.IsValid() {
@@ -250,11 +248,20 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 			incomplete = true
 			prefixesFailed = true
 		}
-		scanTargets = mergeHosts(initialHosts, lan.SweepHosts(prefixes, gatewayIP))
 	}
-	opened := markSMB1(ctx, probe.Scan(ctx, scanTargets, []int{23, 2323, 21, 5900, 5555, 445, 554, 1883}, 700*time.Millisecond, 128))
+	scope := scanScope(arp.neighbors, prefixes, gatewayIP)
+	if prefixesFailed {
+		scope = nil
+	}
+	initialHosts := collectHosts(arp.neighbors, gatewayIP, discovery.responses, scope)
+	scanTargets := initialHosts
+	if gatewayIP.IsValid() {
+		scanTargets = mergeHosts(initialHosts, scanSweepHosts(prefixes, scope, gatewayIP))
+	}
+	opened := markSMB1(ctx, probe.Scan(ctx, scanTargets, []int{23, 2323, 21, 5900, 5555, 445, 554, 8554, 1883, 1984}, 700*time.Millisecond, 128))
 	opened = markUnauthenticatedRTSP(ctx, opened)
 	opened = markUnauthenticatedMQTT(ctx, opened)
+	opened = markUnauthenticatedGo2RTC(ctx, opened)
 	neighbors := arp.neighbors
 	opened = markUnauthenticatedVNC(ctx, opened)
 	opened = markUnauthenticatedADB(ctx, opened)
@@ -280,7 +287,7 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 	}
 	neighbors = homeNeighbors(neighbors, prefixes, gatewayIP)
 
-	store, existed, err := baseline.Load(*statePath)
+	store, existed, err := loadHistory(*statePath, statePathErr)
 	firstRun := !existed
 	loadState := historyLoadReady
 	if err != nil {
@@ -305,7 +312,7 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 	if existed && !firstRun && loadState == historyLoadReady {
 		if lastRun, ok := store.LastRun(); ok {
 			checkNow := time.Now().UTC()
-			days := daysSinceLastCheck(checkNow, lastRun)
+			days := daysSinceLastCheck(checkNow, lastRun, time.Local)
 			lastCheckDays = &days
 		}
 	}
@@ -331,6 +338,7 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 			newDeviceFindings[host] = findingID
 		}
 	}
+	store.LastCheck = now
 
 	devices := make([]deviceOutput, 0, len(reportedHosts))
 	for _, host := range reportedHosts {
@@ -350,6 +358,7 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 	status := report.Status(report.Score(findings), findings)
 	result := output{
 		Version: version, Score: report.Score(findings), Status: status, FirstRun: firstRun, Incomplete: incomplete,
+		HistoryUnavailable:   loadState == historyLoadUnavailable,
 		WiFiLocationRequired: errors.Is(wifiCheck.err, wifi.ErrLocationPermission),
 		Checks: checkedSummary{
 			Ports:        len(scanTargets) > 0,
@@ -371,16 +380,30 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 		store.Prune(now, 30*24*time.Hour, lan.IsRandomizedMAC)
 		if err := baseline.Save(*statePath, store); err != nil {
 			fmt.Fprintf(stderr, "warning: cannot save device history: %v\n", err)
-			return finish(1)
+			return finish(exitCode(findings, loadState, true))
 		}
 	}
 
+	return finish(exitCode(findings, loadState, false))
+}
+
+func exitCode(findings []report.Finding, loadState historyLoadState, historySaveFailed bool) int {
 	for _, finding := range findings {
 		if finding.Level == report.Danger {
-			return finish(2)
+			return 2
 		}
 	}
-	return finish(0)
+	if historySaveFailed || loadState == historyLoadUnavailable {
+		return 1
+	}
+	return 0
+}
+
+func loadHistory(path string, pathErr error) (baseline.Store, bool, error) {
+	if pathErr != nil {
+		return baseline.Store{}, false, pathErr
+	}
+	return baseline.Load(path)
 }
 
 func printNoDeviceError(writer io.Writer, lang string, wifiErr error) {
@@ -462,19 +485,34 @@ func gatewayString(ip netip.Addr) string {
 	return ip.String()
 }
 
-func collectHosts(neighbors []lan.Neighbor, gateway netip.Addr, responses []ssdp.Response) []netip.Addr {
+func collectHosts(neighbors []lan.Neighbor, gateway netip.Addr, responses []ssdp.Response, scope []netip.Prefix) []netip.Addr {
 	hosts := make(map[netip.Addr]struct{})
 	add := func(ip netip.Addr) {
 		if ip.Is4() && ip.IsPrivate() && len(hosts) < maxScanHosts {
 			hosts[ip] = struct{}{}
 		}
 	}
+	inScope := func(ip netip.Addr) bool {
+		if len(scope) == 0 {
+			return true
+		}
+		for _, prefix := range scope {
+			if prefix.Contains(ip) {
+				return true
+			}
+		}
+		return false
+	}
 	for _, neighbor := range neighbors {
-		add(neighbor.IP)
+		if inScope(neighbor.IP) {
+			add(neighbor.IP)
+		}
 	}
 	add(gateway)
 	for _, response := range responses {
-		add(response.IP)
+		if inScope(response.IP) {
+			add(response.IP)
+		}
 	}
 	result := make([]netip.Addr, 0, len(hosts))
 	for ip := range hosts {
@@ -532,7 +570,7 @@ func mergeNeighbors(original, refreshed []lan.Neighbor) []lan.Neighbor {
 }
 
 func deviceHosts(neighbors []lan.Neighbor, gateway netip.Addr, responses []ssdp.Response, opened []probe.Open) []netip.Addr {
-	hosts := collectHosts(neighbors, gateway, responses)
+	hosts := collectHosts(neighbors, gateway, responses, nil)
 	seen := make(map[netip.Addr]struct{}, len(hosts)+len(opened))
 	for _, host := range hosts {
 		seen[host] = struct{}{}
@@ -621,14 +659,19 @@ func fetchPortMappings(
 	return mappings, true, errors.Join(errs...)
 }
 
-func fetchDescriptions(ctx context.Context, client *http.Client, responses []ssdp.Response) (map[netip.Addr]ssdp.Description, []error) {
+var descriptionFetchBudget = 5 * time.Second
+
+func fetchDescriptions(ctx context.Context, client *http.Client, responses []ssdp.Response, gateway netip.Addr) (map[netip.Addr]ssdp.Description, []error) {
+	ctx, cancel := context.WithTimeout(ctx, descriptionFetchBudget)
+	defer cancel()
+
 	selected := make(map[netip.Addr]ssdp.Response)
 	for _, response := range responses {
 		if !ssdp.AllowedLocation(response.Location, response.IP) {
 			continue
 		}
 		current, exists := selected[response.IP]
-		if !exists || (response.ST == "upnp:rootdevice" && current.ST != "upnp:rootdevice") {
+		if !exists || descriptionPriority(response) > descriptionPriority(current) {
 			selected[response.IP] = response
 		}
 	}
@@ -637,6 +680,22 @@ func fetchDescriptions(ctx context.Context, client *http.Client, responses []ssd
 		ip       netip.Addr
 		location string
 	}
+	ordered := make([]request, 0, len(selected))
+	for ip, response := range selected {
+		ordered = append(ordered, request{ip: ip, location: response.Location})
+	}
+	sort.Slice(ordered, func(i, j int) bool {
+		return ordered[i].ip.Less(ordered[j].ip)
+	})
+	for i := range ordered {
+		if ordered[i].ip == gateway && i > 0 {
+			gatewayRequest := ordered[i]
+			copy(ordered[1:i+1], ordered[:i])
+			ordered[0] = gatewayRequest
+			break
+		}
+	}
+
 	requests := make(chan request)
 	results := make(chan descriptionResult)
 	var workers sync.WaitGroup
@@ -654,9 +713,20 @@ func fetchDescriptions(ctx context.Context, client *http.Client, responses []ssd
 			}
 		}()
 	}
+	skipped := 0
 	go func() {
-		for ip, response := range selected {
-			requests <- request{ip: ip, location: response.Location}
+	feed:
+		for index, item := range ordered {
+			if ctx.Err() != nil {
+				skipped = len(ordered) - index
+				break
+			}
+			select {
+			case requests <- item:
+			case <-ctx.Done():
+				skipped = len(ordered) - index
+				break feed
+			}
 		}
 		close(requests)
 		workers.Wait()
@@ -672,7 +742,35 @@ func fetchDescriptions(ctx context.Context, client *http.Client, responses []ssd
 		}
 		devices[result.ip] = result.device
 	}
+	if skipped > 0 {
+		errs = append(errs, fmt.Errorf("description fetch time limit reached; %d devices not read", skipped))
+	}
 	return devices, errs
+}
+
+func descriptionPriority(response ssdp.Response) int {
+	switch {
+	case isUPnPIGDResponse(response.ST):
+		return 3
+	case ssdp.IsGateway(response):
+		return 2
+	case response.ST == "upnp:rootdevice":
+		return 1
+	default:
+		return 0
+	}
+}
+
+func isUPnPIGDResponse(st string) bool {
+	st = strings.ToLower(st)
+	return strings.HasPrefix(st, "urn:schemas-upnp-org:") &&
+		(strings.Contains(st, ":device:internetgatewaydevice:") ||
+			strings.Contains(st, ":device:wandevice:") ||
+			strings.Contains(st, ":device:wanconnectiondevice:") ||
+			strings.Contains(st, ":service:wanipconnection:") ||
+			strings.Contains(st, ":service:wanpppconnection:") ||
+			strings.Contains(st, ":service:wancommoninterfaceconfig:") ||
+			strings.Contains(st, ":service:layer3forwarding:"))
 }
 
 func lookupDeviceNames(ctx context.Context, hosts []netip.Addr) map[netip.Addr]string {
@@ -738,14 +836,22 @@ func deviceName(
 	return ip.String()
 }
 
-func sanitizeName(s string) string {
-	filtered := strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) || r >= 0x200B && r <= 0x200F ||
-			r >= 0x202A && r <= 0x202E || r >= 0x2066 && r <= 0x2069 || r == 0xFEFF {
+func portMappingWarning(err error) string {
+	return stripUnsafeRunes(strings.ReplaceAll(err.Error(), "\n", "; "))
+}
+
+func stripUnsafeRunes(s string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) || unicode.Is(unicode.Bidi_Control, r) ||
+			r >= 0x200B && r <= 0x200D || r == 0xFEFF {
 			return -1
 		}
 		return r
 	}, s)
+}
+
+func sanitizeName(s string) string {
+	filtered := stripUnsafeRunes(s)
 	name := strings.Join(strings.Fields(filtered), " ")
 	runes := []rune(name)
 	if len(runes) > 64 {
@@ -776,6 +882,7 @@ func makeFindings(
 ) []report.Finding {
 	findings := make([]report.Finding, 0)
 	telnetSeen := make(map[netip.Addr]struct{})
+	rtspSeen := make(map[netip.Addr]struct{})
 	for _, item := range opened {
 		name := deviceNames[item.IP]
 		switch item.Port {
@@ -783,6 +890,8 @@ func makeFindings(
 			findings = append(findings, report.Finding{ID: "smb1_enabled", Level: report.Caution, Points: 8, IP: item.IP.String(), Device: name})
 		case 1883:
 			findings = append(findings, report.Finding{ID: "mqtt_anonymous", Level: report.Caution, Points: 8, IP: item.IP.String(), Device: name})
+		case 1984:
+			findings = append(findings, report.Finding{ID: "go2rtc_noauth", Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name})
 		case 23, 2323:
 			if _, exists := telnetSeen[item.IP]; exists {
 				continue
@@ -797,7 +906,11 @@ func makeFindings(
 			findings = append(findings, report.Finding{ID: "vnc_noauth", Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name})
 		case 5555:
 			findings = append(findings, report.Finding{ID: "adb_open", Level: report.Caution, Points: 8, IP: item.IP.String(), Device: name})
-		case 554:
+		case 554, 8554:
+			if _, exists := rtspSeen[item.IP]; exists {
+				continue
+			}
+			rtspSeen[item.IP] = struct{}{}
 			findings = append(findings, report.Finding{ID: "rtsp_noauth", Level: report.Caution, Points: 8, IP: item.IP.String(), Device: name})
 		case adbNoAuthPort:
 			findings = append(findings, report.Finding{ID: "adb_noauth", Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name})
@@ -846,7 +959,7 @@ func makeFindings(
 		if riskyPortForward(mapping) {
 			group.id, group.level, group.points = "port_forward_risky", report.Danger, 20
 			switch mapping.InternalPort {
-			case 554, 37777, 34567:
+			case 554, 8554, 37777, 34567:
 				group.id = "forward_camera"
 			case 1433, 3306, 5432, 6379, 9200, 27017:
 				group.id = "forward_database"
@@ -899,6 +1012,9 @@ func makeFindings(
 		if finding.ID == "adb_noauth" {
 			finding.Message = i18n.T(lang, finding.ID, finding.Device)
 		}
+		if finding.ID == "go2rtc_noauth" {
+			finding.Message = i18n.T(lang, finding.ID, finding.Device)
+		}
 	}
 	for i := range findings {
 		finding := &findings[i]
@@ -918,7 +1034,7 @@ func riskyPortForward(mapping ssdp.PortMapping) bool {
 		return false
 	}
 	switch mapping.InternalPort {
-	case 21, 22, 23, 135, 139, 445, 554, 2323, 2375, 3389, 5555, 5800, 5900, 1433, 3306, 5432, 6379, 9200, 27017, 34567, 37777:
+	case 21, 22, 23, 135, 139, 445, 554, 8554, 1883, 1984, 2323, 2375, 3389, 5555, 5800, 5900, 1433, 3306, 5432, 6379, 9200, 27017, 34567, 37777:
 		return true
 	default:
 		return false
@@ -1011,7 +1127,11 @@ func renderText(writer io.Writer, result output, lang string, lastCheckDays ...*
 		fmt.Fprintln(writer, line)
 	}
 	if result.FirstRun {
-		fmt.Fprintf(writer, "\n%s\n", i18n.T(lang, "first_run"))
+		key := "first_run"
+		if result.HistoryUnavailable {
+			key = "history_unavailable"
+		}
+		fmt.Fprintf(writer, "\n%s\n", i18n.T(lang, key))
 	}
 	if len(result.Findings) == 0 {
 		fmt.Fprintf(writer, "\n%s\n", i18n.T(lang, "no_problems"))

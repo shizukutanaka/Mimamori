@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-func TestParsePTRResponse(t *testing.T) {
+func TestParsePTRAnswer(t *testing.T) {
 	tests := []struct {
 		name     string
 		packet   []byte
@@ -27,54 +27,84 @@ func TestParsePTRResponse(t *testing.T) {
 			ok:       true,
 		},
 		{
-			name:   "different owner",
-			packet: makePTRResponse("1.0.0.127.in-addr.arpa", "other.local", "phone.local", 12, 1, 0x8000),
+			name:     "different owner",
+			packet:   makePTRResponse("1.0.0.127.in-addr.arpa", "other.local", "phone.local", 12, 1, 0x8000),
+			question: "1.0.0.127.in-addr.arpa",
 		},
 		{
-			name:   "non PTR answer",
-			packet: makePTRResponse("1.0.0.127.in-addr.arpa", "1.0.0.127.in-addr.arpa", "phone.local", 1, 1, 0x8000),
-		},
-		{
-			name:   "QR unset",
-			packet: makePTRResponse("1.0.0.127.in-addr.arpa", "1.0.0.127.in-addr.arpa", "phone.local", 12, 1, 0),
-		},
-		{
-			name:   "nonzero RCODE",
-			packet: makePTRResponse("1.0.0.127.in-addr.arpa", "1.0.0.127.in-addr.arpa", "phone.local", 12, 1, 0x8003),
-		},
-		{name: "truncated header", packet: make([]byte, 11)},
-		{name: "truncated name", packet: truncatedQuestion()},
-		{name: "truncated rdata", packet: truncatedRData()},
-		{name: "pointer loop", packet: pointerLoop()},
-		{
-			name:     "uppercase names are lowercased",
-			packet:   makePTRResponse("1.0.0.127.IN-ADDR.ARPA", "1.0.0.127.IN-ADDR.ARPA", "Phone.LOCAL", 12, 0x8001, 0x8000),
+			name:     "question section may differ from expected owner",
+			packet:   makePTRResponse("other.example", "1.0.0.127.in-addr.arpa", "phone.local", 12, 1, 0x8000),
 			question: "1.0.0.127.in-addr.arpa",
 			target:   "phone.local",
+			ok:       true,
+		},
+		{
+			name:     "non PTR answer",
+			packet:   makePTRResponse("1.0.0.127.in-addr.arpa", "1.0.0.127.in-addr.arpa", "phone.local", 1, 1, 0x8000),
+			question: "1.0.0.127.in-addr.arpa",
+		},
+		{
+			name:     "QR unset",
+			packet:   makePTRResponse("1.0.0.127.in-addr.arpa", "1.0.0.127.in-addr.arpa", "phone.local", 12, 1, 0),
+			question: "1.0.0.127.in-addr.arpa",
+		},
+		{
+			name:     "nonzero RCODE",
+			packet:   makePTRResponse("1.0.0.127.in-addr.arpa", "1.0.0.127.in-addr.arpa", "phone.local", 12, 1, 0x8003),
+			question: "1.0.0.127.in-addr.arpa",
+		},
+		{name: "truncated header", packet: make([]byte, 11), question: "1.0.0.127.in-addr.arpa"},
+		{name: "truncated name", packet: truncatedQuestion(), question: "1.0.0.127.in-addr.arpa"},
+		{name: "truncated rdata", packet: truncatedRData(), question: "1.0.0.127.in-addr.arpa"},
+		{name: "pointer loop", packet: pointerLoop(), question: "1.0.0.127.in-addr.arpa"},
+		{
+			name:     "owner matches case-insensitively and target case is preserved",
+			packet:   makePTRResponse("1.0.0.127.IN-ADDR.ARPA", "1.0.0.127.IN-ADDR.ARPA", "Phone.LOCAL", 12, 0x8001, 0x8000),
+			question: "1.0.0.127.in-addr.arpa",
+			target:   "Phone.LOCAL",
+			ok:       true,
+		},
+		{
+			name:     "Android reply without question",
+			packet:   makePTRAnswer("5.1.168.192.in-addr.arpa", "Pixel-8.local", 12, 0x8001, 0x8400),
+			question: "5.1.168.192.in-addr.arpa",
+			target:   "Pixel-8.local",
+			ok:       true,
+		},
+		{
+			name:     "questionless reply with different owner",
+			packet:   makePTRAnswer("6.1.168.192.in-addr.arpa", "Pixel-8.local", 12, 0x8001, 0x8400),
+			question: "5.1.168.192.in-addr.arpa",
+		},
+		{
+			name:     "questionless owner matches case-insensitively",
+			packet:   makePTRAnswer("5.1.168.192.IN-ADDR.ARPA", "Pixel-8.local", 12, 0x8001, 0x8400),
+			question: "5.1.168.192.in-addr.arpa",
+			target:   "Pixel-8.local",
 			ok:       true,
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			question, target, ok := ParsePTRResponse(test.packet)
+			target, ok := ParsePTRAnswer(test.packet, test.question)
 			if ok != test.ok {
-				t.Fatalf("ParsePTRResponse() ok = %t, want %t", ok, test.ok)
+				t.Fatalf("ParsePTRAnswer() ok = %t, want %t", ok, test.ok)
 			}
-			if question != test.question || target != test.target {
-				t.Fatalf("ParsePTRResponse() = (%q, %q, %t), want (%q, %q, %t)",
-					question, target, ok, test.question, test.target, test.ok)
+			if target != test.target {
+				t.Fatalf("ParsePTRAnswer() = (%q, %t), want (%q, %t)",
+					target, ok, test.target, test.ok)
 			}
 		})
 	}
 }
 
-func FuzzParsePTRResponse(f *testing.F) {
+func FuzzParsePTRAnswer(f *testing.F) {
 	f.Add(makePTRResponse("1.0.0.127.in-addr.arpa", "1.0.0.127.in-addr.arpa", "phone.local", 12, 1, 0x8000))
 	f.Add([]byte{})
 	f.Add(pointerLoop())
 	f.Fuzz(func(t *testing.T, packet []byte) {
-		ParsePTRResponse(packet)
+		ParsePTRAnswer(packet, "1.0.0.127.in-addr.arpa")
 	})
 }
 
@@ -84,18 +114,67 @@ func TestReverseNames(t *testing.T) {
 
 	t.Run("strips local suffix and returns early", func(t *testing.T) {
 		port := startResponder(t, nil, func(query []byte) []byte {
-			response := makePTRResponse(question, question, "TaroS-iPhone.local", 12, 1, 0x8000)
+			uppercaseQuestion := strings.ToUpper(question)
+			response := makePTRResponse(uppercaseQuestion, uppercaseQuestion, "TaroS-iPhone.local", 12, 1, 0x8000)
 			copy(response[:2], query[:2])
 			return response
 		})
 		start := time.Now()
 		names := reverseNames(context.Background(), []netip.Addr{host}, port, netip.Addr.IsLoopback, 3*time.Second)
 		elapsed := time.Since(start)
-		if got := names[host]; got != "taros-iphone" {
-			t.Fatalf("ReverseNames() name = %q, want %q", got, "taros-iphone")
+		if got := names[host]; got != "TaroS-iPhone" {
+			t.Fatalf("ReverseNames() name = %q, want %q", got, "TaroS-iPhone")
 		}
 		if elapsed >= time.Second {
 			t.Fatalf("ReverseNames() took %v, want early return well before the 3 second timeout", elapsed)
+		}
+	})
+
+	t.Run("resolves Android reply without question", func(t *testing.T) {
+		port := startResponder(t, nil, func(query []byte) []byte {
+			response := makePTRAnswer(question, "Pixel-8.local", 12, 0x8001, 0x8400)
+			copy(response[:2], query[:2])
+			return response
+		})
+		names := reverseNames(context.Background(), []netip.Addr{host}, port, netip.Addr.IsLoopback, time.Second)
+		if got := names[host]; got != "Pixel-8" {
+			t.Fatalf("ReverseNames() name = %q, want %q", got, "Pixel-8")
+		}
+	})
+
+	t.Run("preserves Japanese device name", func(t *testing.T) {
+		port := startResponder(t, nil, func(query []byte) []byte {
+			response := makePTRResponse(question, question, "うめのiPhone.local", 12, 1, 0x8000)
+			copy(response[:2], query[:2])
+			return response
+		})
+		names := reverseNames(context.Background(), []netip.Addr{host}, port, netip.Addr.IsLoopback, time.Second)
+		if got := names[host]; got != "うめのiPhone" {
+			t.Fatalf("ReverseNames() name = %q, want %q", got, "うめのiPhone")
+		}
+	})
+
+	t.Run("strips uppercase local suffix", func(t *testing.T) {
+		port := startResponder(t, nil, func(query []byte) []byte {
+			response := makePTRResponse(question, question, "Phone.LOCAL", 12, 1, 0x8000)
+			copy(response[:2], query[:2])
+			return response
+		})
+		names := reverseNames(context.Background(), []netip.Addr{host}, port, netip.Addr.IsLoopback, time.Second)
+		if got := names[host]; got != "Phone" {
+			t.Fatalf("ReverseNames() name = %q, want %q", got, "Phone")
+		}
+	})
+
+	t.Run("ignores invalid UTF-8 device name", func(t *testing.T) {
+		port := startResponder(t, nil, func(query []byte) []byte {
+			response := makePTRResponse(question, question, "\x82\xa4\x82\xdfPC.local", 12, 1, 0x8000)
+			copy(response[:2], query[:2])
+			return response
+		})
+		names := reverseNames(context.Background(), []netip.Addr{host}, port, netip.Addr.IsLoopback, time.Second)
+		if _, exists := names[host]; exists {
+			t.Fatalf("ReverseNames() = %q for invalid UTF-8 target, want no entry", names[host])
 		}
 	})
 
@@ -111,7 +190,7 @@ func TestReverseNames(t *testing.T) {
 		}
 	})
 
-	t.Run("ignores a mismatched question", func(t *testing.T) {
+	t.Run("ignores a mismatched PTR owner", func(t *testing.T) {
 		port := startResponder(t, nil, func(query []byte) []byte {
 			response := makePTRResponse("wrong.example", "wrong.example", "phone.local", 12, 1, 0x8000)
 			copy(response[:2], query[:2])
@@ -134,6 +213,23 @@ func TestReverseNames(t *testing.T) {
 			t.Fatalf("ReverseNames() took %v without a reply", elapsed)
 		}
 	})
+}
+
+func makePTRAnswer(owner, target string, recordType, class, flags uint16) []byte {
+	packet := make([]byte, 12)
+	binary.BigEndian.PutUint16(packet[2:4], flags)
+	binary.BigEndian.PutUint16(packet[6:8], 1)
+	packet = appendDNSName(packet, owner)
+	packet = append(packet,
+		byte(recordType>>8), byte(recordType),
+		byte(class>>8), byte(class),
+		0, 0, 0, 0,
+		0, 0,
+	)
+	dataStart := len(packet)
+	packet = appendDNSName(packet, target)
+	binary.BigEndian.PutUint16(packet[dataStart-2:dataStart], uint16(len(packet)-dataStart))
+	return packet
 }
 
 func makePTRResponse(question, owner, target string, recordType, class, flags uint16) []byte {
@@ -281,11 +377,11 @@ func TestPTRQueryFormat(t *testing.T) {
 	}
 }
 
-func TestPTRQuestionCompressionDoesNotMutateInput(t *testing.T) {
+func TestPTRAnswerDoesNotMutateInput(t *testing.T) {
 	packet := makePTRResponse("1.0.0.127.in-addr.arpa", "1.0.0.127.in-addr.arpa", "phone.local", 12, 1, 0x8000)
 	before := append([]byte(nil), packet...)
-	ParsePTRResponse(packet)
+	ParsePTRAnswer(packet, "1.0.0.127.in-addr.arpa")
 	if !reflect.DeepEqual(packet, before) {
-		t.Fatal("ParsePTRResponse() mutated the packet")
+		t.Fatal("ParsePTRAnswer() mutated the packet")
 	}
 }

@@ -48,6 +48,104 @@ func TestPortMappingsReadsEntriesUntilInvalidIndex(t *testing.T) {
 	}
 }
 
+func TestPortMappingsTrimsWhitespace(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		assertPortMappingRequest(t, r, requests-1)
+		if requests == 1 {
+			_, _ = io.WriteString(w, fmt.Sprintf(`<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body>
+<u:GetGenericPortMappingEntryResponse xmlns:u="%s">
+<NewRemoteHost>
+&#x20;&#x20;&#x20;
+</NewRemoteHost>
+<NewExternalPort>
+ 12345&#x20;
+</NewExternalPort>
+<NewProtocol>
+ TCP&#x20;
+</NewProtocol>
+<NewInternalPort>
+ 23&#x20;
+</NewInternalPort>
+<NewInternalClient>
+    192.168.1.20&#x20;
+  </NewInternalClient>
+<NewEnabled>
+ 1&#x20;
+</NewEnabled>
+<NewPortMappingDescription>Camera</NewPortMappingDescription>
+</u:GetGenericPortMappingEntryResponse></s:Body></s:Envelope>`, testWANIPService))
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = io.WriteString(w, portMappingErrorXML(713))
+	}))
+	defer server.Close()
+
+	mappings, err := PortMappings(context.Background(), server.Client(), server.URL, testWANIPService)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(mappings) != 1 {
+		t.Fatalf("PortMappings() returned %d mappings, want 1: %#v", len(mappings), mappings)
+	}
+	want := PortMapping{
+		RemoteHost: "", ExternalPort: 12345, Protocol: "TCP", InternalPort: 23,
+		InternalClient: "192.168.1.20", Enabled: true, Description: "Camera",
+	}
+	if mappings[0] != want {
+		t.Fatalf("mapping = %#v, want %#v", mappings[0], want)
+	}
+	if requests != 2 {
+		t.Fatalf("request count = %d, want 2", requests)
+	}
+}
+
+func TestPortMappingsEnabledValues(t *testing.T) {
+	tests := []struct {
+		name    string
+		enabled string
+		want    bool
+	}{
+		{name: "one", enabled: "1", want: true},
+		{name: "true", enabled: "true", want: true},
+		{name: "uppercase true", enabled: "TRUE", want: true},
+		{name: "yes", enabled: "yes", want: true},
+		{name: "capitalized yes", enabled: "Yes", want: true},
+		{name: "whitespace yes", enabled: " yes ", want: true},
+		{name: "zero", enabled: "0"},
+		{name: "false", enabled: "false"},
+		{name: "no", enabled: "no"},
+		{name: "empty"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			requests := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requests++
+				assertPortMappingRequest(t, r, requests-1)
+				if requests == 1 {
+					_, _ = io.WriteString(w, portMappingEntryWithEnabledXML(80, test.enabled))
+					return
+				}
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = io.WriteString(w, portMappingErrorXML(713))
+			}))
+			defer server.Close()
+
+			mappings, err := PortMappings(context.Background(), server.Client(), server.URL, testWANIPService)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(mappings) != 1 || mappings[0].Enabled != test.want {
+				t.Fatalf("PortMappings() = %#v, want one mapping with Enabled=%t", mappings, test.want)
+			}
+		})
+	}
+}
+
 func TestPortMappingsReturnsPartialEntriesAndError(t *testing.T) {
 	requests := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -135,13 +233,18 @@ func assertPortMappingRequest(t *testing.T, r *http.Request, wantIndex int) {
 }
 
 func portMappingEntryXML(externalPort int) string {
+	enabled := map[bool]string{true: "1", false: "false"}[externalPort == 1]
+	return portMappingEntryWithEnabledXML(externalPort+79, enabled)
+}
+
+func portMappingEntryWithEnabledXML(externalPort int, enabled string) string {
 	return fmt.Sprintf(`<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body>
 <u:GetGenericPortMappingEntryResponse xmlns:u="%s">
 <NewRemoteHost></NewRemoteHost><NewExternalPort>%d</NewExternalPort><NewProtocol>TCP</NewProtocol>
 <NewInternalPort>8080</NewInternalPort><NewInternalClient>192.168.1.30</NewInternalClient>
 <NewEnabled>%s</NewEnabled><NewPortMappingDescription>Web camera</NewPortMappingDescription>
 </u:GetGenericPortMappingEntryResponse></s:Body></s:Envelope>`,
-		testWANIPService, externalPort+79, map[bool]string{true: "1", false: "false"}[externalPort == 1])
+		testWANIPService, externalPort, enabled)
 }
 
 func portMappingErrorXML(code int) string {

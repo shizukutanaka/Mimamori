@@ -32,6 +32,11 @@ func TestParseMacOS(t *testing.T) {
 		{name: "WPA personal", mode: "spairport_security_mode_wpa_personal", want: WPA1orTKIP},
 		{name: "WPA enterprise", mode: "spairport_security_mode_wpa_enterprise", want: WPA1orTKIP},
 		{name: "WPA2 personal", mode: "spairport_security_mode_wpa2_personal", want: Modern},
+		{name: "WPA2 personal mixed", mode: "spairport_security_mode_wpa2_personal_mixed", want: WPA1orTKIP},
+		{name: "WPA2 enterprise mixed", mode: "spairport_security_mode_wpa2_enterprise_mixed", want: WPA1orTKIP},
+		{name: "802.1X dynamic WEP", mode: "spairport_security_mode_8021x", want: WEP},
+		{name: "WPA3 transition", mode: "spairport_security_mode_wpa3_transition", want: Modern},
+		{name: "WPA2 enterprise", mode: "spairport_security_mode_wpa2_enterprise", want: Modern},
 		{name: "WPA3 personal", mode: "spairport_security_mode_wpa3_personal", want: Modern},
 		{name: "unknown", mode: "spairport_security_mode_unknown", want: Unknown},
 	}
@@ -75,6 +80,13 @@ func TestParseNmcli(t *testing.T) {
 		{name: "WPA3", text: "yes:WPA3\n", want: Modern},
 		{name: "WPA1 mixed with WPA2 remains weak", text: "yes:WPA1 WPA2\n", want: WPA1orTKIP},
 		{name: "WPA2 mixed with WPA3 is modern", text: "yes:WPA2 WPA3\n", want: Modern},
+		{name: "multiple active networks selects weaker one", text: "yes:WPA2\nyes:WEP\n", want: WEP},
+		{name: "active open interface overrides WPA2", text: "yes:WPA2\nyes:\n", want: Open},
+		{name: "mixed WPA1 and WPA2 on another interface stays weak", text: "yes:WPA3\nyes:WPA1 WPA2\n", want: WPA1orTKIP},
+		{name: "unknown active security with modern falls back", text: "yes:OWE\nyes:WPA2\n", want: Unknown},
+		{name: "unknown active security keeps known weak", text: "yes:OWE\nyes:WEP\n", want: WEP},
+		{name: "only unknown active security", text: "yes:OWE\n", want: Unknown},
+		{name: "inactive WEP does not affect result", text: "no:WEP\n", want: Unknown},
 		{name: "localized active value is not accepted", text: "はい:WPA2\n", want: Unknown},
 		{name: "no active network", text: "no:WPA2\n", want: Unknown},
 	}
@@ -370,5 +382,30 @@ func TestSupplicantInterfaces(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("supplicantInterfaces()[%d] = %#v, want %#v", i, got[i], want[i])
 		}
+	}
+}
+
+func TestNmcliAllowsTKIP(t *testing.T) {
+	tests := []struct {
+		name string
+		text string
+		want bool
+	}{
+		{name: "pair and group TKIP", text: "yes:pair_tkip pair_ccmp group_tkip psk", want: true},
+		{name: "group TKIP", text: "yes:pair_ccmp group_tkip psk", want: true},
+		{name: "CCMP only", text: "yes:pair_ccmp group_ccmp psk"},
+		{name: "WPA3 transition", text: "yes:pair_ccmp group_ccmp psk sae"},
+		{name: "none", text: "yes:(none)"},
+		{name: "inactive TKIP", text: "no:pair_tkip group_tkip psk"},
+		{name: "second active network has group TKIP", text: "yes:pair_ccmp group_ccmp psk\nyes:pair_ccmp group_tkip psk", want: true},
+		{name: "CRLF", text: "no:pair_ccmp group_ccmp psk\r\nyes:pair_ccmp group_tkip psk\r", want: true},
+		{name: "empty"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := NmcliAllowsTKIP(test.text); got != test.want {
+				t.Fatalf("NmcliAllowsTKIP() = %t, want %t", got, test.want)
+			}
+		})
 	}
 }

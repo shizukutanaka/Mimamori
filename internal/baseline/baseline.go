@@ -22,8 +22,9 @@ type Seen struct {
 }
 
 type Store struct {
-	Version int             `json:"version"`
-	Devices map[string]Seen `json:"devices"`
+	Version   int             `json:"version"`
+	Devices   map[string]Seen `json:"devices"`
+	LastCheck time.Time       `json:"last_check"`
 }
 
 func emptyStore() Store {

@@ -38,7 +38,7 @@ func TestDiscoverResendsAfterDelay(t *testing.T) {
 }
 
 func TestDiscoverUnicastSucceedsWhenMulticastSendFails(t *testing.T) {
-	target, _, _ := startSSDPTestResponder(t, func(int, []byte) bool { return true })
+	target, requests, _ := startSSDPTestResponder(t, func(int, []byte) bool { return true })
 	unreachableMulticast := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0}
 
 	responses, err := discover(
@@ -51,6 +51,9 @@ func TestDiscoverUnicastSucceedsWhenMulticastSendFails(t *testing.T) {
 	)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if requests.Load() < 2 {
+		t.Fatalf("received %d unicast searches, want both message forms", requests.Load())
 	}
 	if len(responses) != 1 {
 		t.Fatalf("Discover() returned %d responses, want 1", len(responses))
@@ -109,7 +112,17 @@ func TestDiscoverUnicastSearchMessage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := string(<-received)
+	readRequest := func() string {
+		t.Helper()
+		select {
+		case request := <-received:
+			return string(request)
+		case <-time.After(time.Second):
+			t.Fatal("timed out waiting for unicast SSDP search")
+			return ""
+		}
+	}
+	request := readRequest()
 	if !strings.Contains(request, "HOST: 127.0.0.1:1900\r\n") {
 		t.Fatalf("unicast search HOST header = %q, want target IP with port 1900", request)
 	}
@@ -118,6 +131,16 @@ func TestDiscoverUnicastSearchMessage(t *testing.T) {
 	}
 	if strings.Contains(request, "\r\nMX:") {
 		t.Fatalf("unicast search unexpectedly includes MX: %q", request)
+	}
+
+	request = readRequest()
+	if !strings.Contains(request, "HOST: 239.255.255.250:1900\r\n") {
+		t.Fatalf("multicast-form unicast search HOST header = %q, want multicast HOST", request)
+	}
+	if !strings.Contains(request, "MAN: \"ssdp:discover\"\r\n") ||
+		!strings.Contains(request, "MX: 2\r\n") ||
+		!strings.Contains(request, "ST: ssdp:all\r\n") {
+		t.Fatalf("multicast-form unicast search is missing MAN, MX, or ST: %q", request)
 	}
 }
 
@@ -391,6 +414,32 @@ func TestWANConnectionsNestedDevice(t *testing.T) {
 	}
 }
 
+func TestWANConnectionsTrimsWhitespace(t *testing.T) {
+	xmlDescription := `<root><device>
+<deviceType>urn:schemas-upnp-org:device:InternetGatewayDevice:1</deviceType>
+<deviceList><device><deviceType>urn:schemas-upnp-org:device:WANDevice:1</deviceType>
+<deviceList><device><deviceType>urn:schemas-upnp-org:device:WANConnectionDevice:1</deviceType>
+<serviceList><service>
+<serviceType>
+  urn:schemas-upnp-org:service:WANIPConnection:1
+</serviceType>
+<controlURL>
+  /ctl/IPConn
+</controlURL>
+</service></serviceList>
+</device></deviceList></device></deviceList>
+</device></root>`
+	description, err := ParseDescription(strings.NewReader(xmlDescription))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := Service{ServiceType: "urn:schemas-upnp-org:service:WANIPConnection:1", ControlURL: "/ctl/IPConn"}
+	services := description.Device.WANConnections()
+	if len(services) != 1 || services[0] != want {
+		t.Fatalf("WANConnections() = %#v, want [%#v]", services, want)
+	}
+}
+
 func TestWANConnectionsPPP(t *testing.T) {
 	description, err := ParseDescription(strings.NewReader(`<root><device><deviceList><device><serviceList>
 <service><serviceType>urn:schemas-upnp-org:service:WANPPPConnection:1</serviceType><controlURL>/ctl/PPPConn</controlURL></service>
@@ -523,6 +572,44 @@ func TestControlURL(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			got, ok := ControlURL(test.location, test.urlBase, test.controlURL, from)
+			if ok != test.wantAllowed || (ok && got != test.want) {
+				t.Fatalf("ControlURL() = %q, %v; want %q, %v", got, ok, test.want, test.wantAllowed)
+			}
+		})
+	}
+}
+
+func TestControlURLTrimsWhitespace(t *testing.T) {
+	from := netip.MustParseAddr("192.168.1.1")
+	location := "http://192.168.1.1:5000/rootDesc.xml"
+	tests := []struct {
+		name        string
+		urlBase     string
+		controlURL  string
+		want        string
+		wantAllowed bool
+	}{
+		{
+			name:        "padded control URL",
+			controlURL:  "\n  /ctl/IPConn\n",
+			want:        "http://192.168.1.1:5000/ctl/IPConn",
+			wantAllowed: true,
+		},
+		{
+			name:        "padded URLBase",
+			urlBase:     "\n http://192.168.1.1:5000/ \n",
+			controlURL:  "ctl/IPConn",
+			want:        "http://192.168.1.1:5000/ctl/IPConn",
+			wantAllowed: true,
+		},
+		{
+			name:       "padded off-router control URL",
+			controlURL: "\n http://8.8.8.8/ctl\n",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, ok := ControlURL(location, test.urlBase, test.controlURL, from)
 			if ok != test.wantAllowed || (ok && got != test.want) {
 				t.Fatalf("ControlURL() = %q, %v; want %q, %v", got, ok, test.want, test.wantAllowed)
 			}

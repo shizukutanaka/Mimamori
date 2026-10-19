@@ -12,9 +12,9 @@ import (
 )
 
 var (
-	portableSDKVersionPattern = regexp.MustCompile(`(?i)Portable SDK for UPnP devices/([0-9]+)\.([0-9]+)\.([0-9]+)`)
-	intelSDKPattern           = regexp.MustCompile(`(?i)Intel SDK for UPnP devices/`)
-	miniupnpdVersionPattern   = regexp.MustCompile(`(?i)miniupnpd/([0-9]+)\.([0-9]+)`)
+	portableSDKVersionPattern = regexp.MustCompile(`(?i)(?:^|[^A-Za-z0-9_])Portable SDK for UPnP devices/([0-9]+)\.([0-9]+)\.([0-9]+)`)
+	intelSDKPattern           = regexp.MustCompile(`(?i)(?:^|[^A-Za-z0-9_])Intel SDK for UPnP devices/`)
+	miniupnpdVersionPattern   = regexp.MustCompile(`(?i)(?:^|[^A-Za-z0-9_])miniupnpd/([0-9]+)\.([0-9]+)`)
 )
 
 func vulnerableUPnPStackFindings(
@@ -69,7 +69,7 @@ func vulnerableUPnPComponent(server string) (string, bool) {
 		if majorErr != nil || minorErr != nil || patchErr != nil {
 			continue
 		}
-		if major > 1 || major == 1 && (minor > 6 || minor == 6 && patch >= 18) {
+		if major > 1 || major == 1 && (minor > 6 || minor == 6 && patch >= 21) {
 			continue
 		}
 		if match[0] < firstMatch {

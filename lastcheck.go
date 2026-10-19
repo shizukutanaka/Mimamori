@@ -6,8 +6,12 @@ import (
 	"github.com/shizukutanaka/Mimamori/internal/i18n"
 )
 
-func daysSinceLastCheck(now, last time.Time) int {
-	days := int(now.Sub(last).Hours() / 24)
+func daysSinceLastCheck(now, last time.Time, loc *time.Location) int {
+	nowYear, nowMonth, nowDay := now.In(loc).Date()
+	lastYear, lastMonth, lastDay := last.In(loc).Date()
+	nowDate := time.Date(nowYear, nowMonth, nowDay, 0, 0, 0, 0, time.UTC)
+	lastDate := time.Date(lastYear, lastMonth, lastDay, 0, 0, 0, 0, time.UTC)
+	days := int(nowDate.Sub(lastDate).Hours() / 24)
 	if days < 0 {
 		return 0
 	}

@@ -112,3 +112,97 @@ func TestHomeNeighbors(t *testing.T) {
 		})
 	}
 }
+
+func TestHomePrefixes(t *testing.T) {
+	tests := []struct {
+		name     string
+		prefixes []netip.Prefix
+		gateway  netip.Addr
+		want     []netip.Prefix
+	}{
+		{
+			name: "same home subnet on two interfaces",
+			prefixes: []netip.Prefix{
+				netip.MustParsePrefix("192.168.1.10/24"),
+				netip.MustParsePrefix("192.168.1.11/24"),
+			},
+			gateway: netip.MustParseAddr("192.168.1.1"),
+			want: []netip.Prefix{
+				netip.MustParsePrefix("192.168.1.10/24"),
+				netip.MustParsePrefix("192.168.1.11/24"),
+			},
+		},
+		{
+			name: "most specific prefix wins",
+			prefixes: []netip.Prefix{
+				netip.MustParsePrefix("192.168.0.0/16"),
+				netip.MustParsePrefix("192.168.1.10/24"),
+			},
+			gateway: netip.MustParseAddr("192.168.1.1"),
+			want:    []netip.Prefix{netip.MustParsePrefix("192.168.1.10/24")},
+		},
+		{
+			name:     "gateway in no prefix",
+			prefixes: []netip.Prefix{netip.MustParsePrefix("192.168.2.0/24")},
+			gateway:  netip.MustParseAddr("192.168.1.1"),
+		},
+		{
+			name:     "invalid gateway",
+			prefixes: []netip.Prefix{netip.MustParsePrefix("192.168.1.0/24")},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := homePrefixes(test.prefixes, test.gateway)
+			if !reflect.DeepEqual(got, test.want) {
+				t.Fatalf("homePrefixes() = %#v, want %#v", got, test.want)
+			}
+		})
+	}
+}
+
+func TestScanScopeLimitsSweepHostsToHomePrefix(t *testing.T) {
+	gateway := netip.MustParseAddr("192.168.1.1")
+	neighbors := []lan.Neighbor{{IP: gateway}}
+	prefixes := []netip.Prefix{
+		netip.MustParsePrefix("192.168.1.10/25"),
+		netip.MustParsePrefix("192.168.56.1/16"),
+	}
+	targets := scanSweepHosts(prefixes, scanScope(neighbors, prefixes, gateway), gateway)
+	contains := func(ip netip.Addr) bool {
+		for _, target := range targets {
+			if target == ip {
+				return true
+			}
+		}
+		return false
+	}
+
+	if !contains(netip.MustParseAddr("192.168.1.100")) {
+		t.Error("scan targets do not contain 192.168.1.100 from the home prefix")
+	}
+	if contains(netip.MustParseAddr("192.168.1.200")) {
+		t.Error("scan targets contain 192.168.1.200 outside the home prefix")
+	}
+}
+
+func TestScanScopeRequiresGatewayNeighbor(t *testing.T) {
+	gateway := netip.MustParseAddr("10.8.0.1")
+	neighbors := []lan.Neighbor{{IP: netip.MustParseAddr("192.168.1.40")}}
+	prefixes := []netip.Prefix{
+		netip.MustParsePrefix("192.168.1.10/24"),
+		netip.MustParsePrefix("10.8.0.2/24"),
+	}
+
+	scope := scanScope(neighbors, prefixes, gateway)
+	if scope != nil {
+		t.Errorf("scanScope() = %v, want nil", scope)
+	}
+	targets := collectHosts(neighbors, gateway, nil, scope)
+	for _, target := range targets {
+		if target == netip.MustParseAddr("192.168.1.40") {
+			return
+		}
+	}
+	t.Error("scan targets do not contain physical neighbor 192.168.1.40")
+}

@@ -4,14 +4,18 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"net/http"
 	"net/netip"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 	"unicode"
 
 	"github.com/shizukutanaka/Mimamori/internal/baseline"
@@ -22,6 +26,80 @@ import (
 	"github.com/shizukutanaka/Mimamori/internal/ssdp"
 	"github.com/shizukutanaka/Mimamori/internal/wifi"
 )
+
+func TestExitCode(t *testing.T) {
+	danger := report.Finding{Level: report.Danger}
+	caution := report.Finding{Level: report.Caution}
+	tests := []struct {
+		name              string
+		findings          []report.Finding
+		loadState         historyLoadState
+		historySaveFailed bool
+		want              int
+	}{
+		{name: "danger and history save failed", findings: []report.Finding{danger}, loadState: historyLoadReady, historySaveFailed: true, want: 2},
+		{name: "caution and history save failed", findings: []report.Finding{caution}, loadState: historyLoadReady, historySaveFailed: true, want: 1},
+		{name: "danger and history saved", findings: []report.Finding{danger}, loadState: historyLoadReady, want: 2},
+		{name: "caution and history saved", findings: []report.Finding{caution}, loadState: historyLoadReady, want: 0},
+		{name: "no findings and history saved", loadState: historyLoadReady, want: 0},
+		{name: "caution and history unreadable", findings: []report.Finding{caution}, loadState: historyLoadUnavailable, want: 1},
+		{name: "no findings and history unreadable", loadState: historyLoadUnavailable, want: 1},
+		{name: "danger and history unreadable", findings: []report.Finding{danger}, loadState: historyLoadUnavailable, want: 2},
+		{name: "quarantined history", loadState: historyLoadQuarantined, want: 0},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := exitCode(test.findings, test.loadState, test.historySaveFailed); got != test.want {
+				t.Fatalf("exitCode() = %d, want %d", got, test.want)
+			}
+		})
+	}
+}
+
+func TestLoadHistoryPathError(t *testing.T) {
+	t.Run("returns path error without creating a file", func(t *testing.T) {
+		tempDir := t.TempDir()
+		workingDir, err := os.Getwd()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chdir(tempDir); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if err := os.Chdir(workingDir); err != nil {
+				t.Errorf("restore working directory: %v", err)
+			}
+		})
+
+		wantErr := errors.New("no home")
+		_, existed, err := loadHistory("", wantErr)
+		if err != wantErr {
+			t.Fatalf("loadHistory() error = %v, want %v", err, wantErr)
+		}
+		if existed {
+			t.Fatal("loadHistory() reported history exists, want false")
+		}
+		entries, err := os.ReadDir(tempDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(entries) != 0 {
+			t.Fatalf("working directory contains files: %v", entries)
+		}
+	})
+
+	t.Run("missing file", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "missing.json")
+		_, existed, err := loadHistory(path, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if existed {
+			t.Fatal("loadHistory() reported history exists, want false")
+		}
+	})
+}
 
 func TestMakeFindings(t *testing.T) {
 	ip := netip.MustParseAddr("192.168.1.10")
@@ -78,12 +156,24 @@ func TestVulnerableUPnPComponent(t *testing.T) {
 	}{
 		{name: "libupnp 1.6.6", server: "Portable SDK for UPnP devices/1.6.6", want: "libupnp 1.6.6", vulnerable: true},
 		{name: "libupnp 1.6.17", server: "Portable SDK for UPnP devices/1.6.17", want: "libupnp 1.6.17", vulnerable: true},
-		{name: "libupnp threshold", server: "Portable SDK for UPnP devices/1.6.18"},
+		{name: "libupnp 1.6.18", server: "Portable SDK for UPnP devices/1.6.18", want: "libupnp 1.6.18", vulnerable: true},
+		{name: "libupnp 1.6.20", server: "Portable SDK for UPnP devices/1.6.20", want: "libupnp 1.6.20", vulnerable: true},
+		{name: "libupnp threshold", server: "Portable SDK for UPnP devices/1.6.21"},
 		{name: "libupnp newer minor", server: "Portable SDK for UPnP devices/1.8.0"},
 		{name: "libupnp numeric minor", server: "Portable SDK for UPnP devices/1.14.0"},
 		{name: "Intel SDK case insensitive", server: "intel sdk for upnp devices/", want: "Intel SDK for UPnP devices (all versions)", vulnerable: true},
+		{name: "embedded Intel SDK", server: "FooIntel SDK for UPnP devices/"},
 		{name: "MiniUPnPd 1.0", server: "miniupnpd/1.0", want: "MiniUPnPd 1.0", vulnerable: true},
 		{name: "MiniUPnPd 1.3", server: "MINIUPNPD/1.3", want: "MiniUPnPd 1.3", vulnerable: true},
+		{name: "MiniUPnPd after server tokens", server: "Linux/2.6 UPnP/1.0 miniupnpd/1.3", want: "MiniUPnPd 1.3", vulnerable: true},
+		{name: "MiniUPnPd after labelled token", server: "Linux/2.6 UPnP/1.0 (daemon:miniupnpd/1.3)", want: "MiniUPnPd 1.3", vulnerable: true},
+		{name: "MiniUPnPd in parentheses", server: "(miniupnpd/1.3)", want: "MiniUPnPd 1.3", vulnerable: true},
+		{name: "embedded MiniUPnPd", server: "notminiupnpd/1.3"},
+		{name: "MiniUPnPd after underscore", server: "x_miniupnpd/1.3"},
+		{name: "MiniUPnPd after digit", server: "2miniupnpd/1.3"},
+		{name: "Portable SDK after comma", server: "Linux, UPnP/1.0, Portable SDK for UPnP devices/1.6.6", want: "libupnp 1.6.6", vulnerable: true},
+		{name: "Portable SDK after labelled token", server: "Linux UPnP/1.0 sdk:Portable SDK for UPnP devices/1.6.6", want: "libupnp 1.6.6", vulnerable: true},
+		{name: "embedded Portable SDK", server: "xPortable SDK for UPnP devices/1.6.6"},
 		{name: "MiniUPnPd threshold", server: "miniupnpd/1.4"},
 		{name: "MiniUPnPd newer major", server: "miniupnpd/2.1"},
 		{name: "unparseable portable version", server: "Portable SDK for UPnP devices/1.6.x"},
@@ -194,6 +284,72 @@ func TestADBOpenFinding(t *testing.T) {
 	}
 	if finding.Message != i18n.T("en", "adb_open", deviceName) || finding.Fix != i18n.T("en", "adb_open_fix") {
 		t.Fatalf("ADB finding text = %#v, want localized message and fix", finding)
+	}
+}
+
+func TestGo2RTCNoAuthFinding(t *testing.T) {
+	ip := netip.MustParseAddr("192.168.1.10")
+	deviceName := "Home Assistant"
+	findings := makeFindings(
+		[]probe.Open{{IP: ip, Port: 1984}},
+		nil,
+		netip.Addr{},
+		map[netip.Addr]ssdp.Description{},
+		map[netip.Addr]string{ip: deviceName},
+		nil,
+		nil,
+		"en",
+	)
+	if len(findings) != 1 {
+		t.Fatalf("makeFindings() returned %d findings, want one: %#v", len(findings), findings)
+	}
+	finding := findings[0]
+	if finding.ID != "go2rtc_noauth" || finding.Level != report.Danger || finding.Points != 25 {
+		t.Fatalf("go2rtc finding = %#v, want go2rtc_noauth/Danger/25", finding)
+	}
+	if !strings.Contains(finding.Message, deviceName) {
+		t.Fatalf("go2rtc message = %q, want it to contain %q", finding.Message, deviceName)
+	}
+}
+
+func TestRTSP8554Finding(t *testing.T) {
+	ip := netip.MustParseAddr("192.168.1.23")
+	findings := makeFindings(
+		[]probe.Open{{IP: ip, Port: 8554}},
+		nil,
+		netip.Addr{},
+		map[netip.Addr]ssdp.Description{},
+		map[netip.Addr]string{ip: "Home Assistant"},
+		nil,
+		nil,
+		"en",
+	)
+	if len(findings) != 1 {
+		t.Fatalf("makeFindings() returned %d findings, want one: %#v", len(findings), findings)
+	}
+	finding := findings[0]
+	if finding.ID != "rtsp_noauth" || finding.Level != report.Caution || finding.Points != 8 {
+		t.Fatalf("RTSP finding = %#v, want rtsp_noauth/Caution/8", finding)
+	}
+}
+
+func TestRTSPFindingDeduplicatedAcrossPorts(t *testing.T) {
+	ip := netip.MustParseAddr("192.168.1.23")
+	findings := makeFindings(
+		[]probe.Open{{IP: ip, Port: 554}, {IP: ip, Port: 8554}},
+		nil,
+		netip.Addr{},
+		map[netip.Addr]ssdp.Description{},
+		map[netip.Addr]string{ip: "Home Assistant"},
+		nil,
+		nil,
+		"en",
+	)
+	if len(findings) != 1 {
+		t.Fatalf("makeFindings() returned %d findings, want one: %#v", len(findings), findings)
+	}
+	if findings[0].ID != "rtsp_noauth" || findings[0].IP != ip.String() {
+		t.Fatalf("RTSP finding = %#v, want one rtsp_noauth finding for %s", findings[0], ip)
 	}
 }
 
@@ -349,6 +505,22 @@ func TestPortForwardFindings(t *testing.T) {
 			}},
 			names:  map[netip.Addr]string{internalIP: "DVR"},
 			wantID: "forward_camera", wantLevel: report.Danger, wantCount: 1, wantPort: 34567, wantName: "DVR",
+		},
+		{
+			name: "unrestricted TCP go2rtc RTSP port is camera danger",
+			mappings: []ssdp.PortMapping{{
+				ExternalPort: 8554, Protocol: "TCP", InternalPort: 8554, InternalClient: internalIP.String(), Enabled: true,
+			}},
+			names:  map[netip.Addr]string{internalIP: "Home Assistant"},
+			wantID: "forward_camera", wantLevel: report.Danger, wantCount: 1, wantPort: 8554, wantName: "Home Assistant",
+		},
+		{
+			name: "unrestricted TCP go2rtc API port is risky",
+			mappings: []ssdp.PortMapping{{
+				ExternalPort: 1984, Protocol: "TCP", InternalPort: 1984, InternalClient: internalIP.String(), Enabled: true,
+			}},
+			names:  map[netip.Addr]string{internalIP: "Home Assistant"},
+			wantID: "port_forward_risky", wantLevel: report.Danger, wantCount: 1, wantPort: 1984, wantName: "Home Assistant",
 		},
 		{
 			name: "UDP RTSP port is not risky",
@@ -599,6 +771,66 @@ func (roundTripper roundTripperFunc) RoundTrip(request *http.Request) (*http.Res
 	return roundTripper(request)
 }
 
+func TestFetchDescriptionsBoundsSpoofedFlood(t *testing.T) {
+	previousBudget := descriptionFetchBudget
+	descriptionFetchBudget = 200 * time.Millisecond
+	t.Cleanup(func() {
+		descriptionFetchBudget = previousBudget
+	})
+
+	gateway := netip.MustParseAddr("192.168.1.1")
+	responses := make([]ssdp.Response, 0, 65)
+	for host := 100; host <= 163; host++ {
+		ip := netip.MustParseAddr(fmt.Sprintf("192.168.1.%d", host))
+		responses = append(responses, ssdp.Response{
+			IP:       ip,
+			ST:       "upnp:rootdevice",
+			Location: fmt.Sprintf("http://%s:49152/d.xml", ip),
+		})
+	}
+	responses = append(responses, ssdp.Response{
+		IP:       gateway,
+		ST:       "upnp:rootdevice",
+		Location: fmt.Sprintf("http://%s:49152/d.xml", gateway),
+	})
+
+	client := &http.Client{
+		Timeout: 2 * time.Second,
+		Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
+			if request.URL.Hostname() == gateway.String() {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     make(http.Header),
+					Body: io.NopCloser(strings.NewReader(`<root><device>
+<deviceType>urn:schemas-upnp-org:device:InternetGatewayDevice:1</deviceType>
+<friendlyName>Home Router</friendlyName></device></root>`)),
+				}, nil
+			}
+			<-request.Context().Done()
+			return nil, request.Context().Err()
+		}),
+	}
+
+	start := time.Now()
+	devices, errs := fetchDescriptions(context.Background(), client, responses, gateway)
+	elapsed := time.Since(start)
+	if elapsed >= 2*time.Second {
+		t.Fatalf("fetchDescriptions() took %s, want under 2s", elapsed)
+	}
+	if _, ok := devices[gateway]; !ok {
+		t.Fatal("gateway description is missing")
+	}
+	if len(errs) > 9 {
+		t.Fatalf("fetchDescriptions() returned %d errors, want at most 9", len(errs))
+	}
+	for _, err := range errs {
+		if strings.Contains(err.Error(), "time limit reached") {
+			return
+		}
+	}
+	t.Fatal("fetchDescriptions() errors do not contain the time limit summary")
+}
+
 func TestRouterUPnPAttribution(t *testing.T) {
 	gateway := netip.MustParseAddr("192.168.1.1")
 	secondary := netip.MustParseAddr("192.168.1.2")
@@ -642,8 +874,8 @@ func TestSanitizeName(t *testing.T) {
 		t.Fatalf("sanitizeName(escape sequences) = %q", got)
 	}
 	for _, r := range got {
-		if unicode.IsControl(r) || r >= 0x200B && r <= 0x200F ||
-			r >= 0x202A && r <= 0x202E || r >= 0x2066 && r <= 0x2069 || r == 0xFEFF {
+		if unicode.IsControl(r) || unicode.Is(unicode.Bidi_Control, r) ||
+			r >= 0x200B && r <= 0x200D || r == 0xFEFF {
 			t.Errorf("sanitizeName left excluded rune U+%04X in %q", r, got)
 		}
 	}
@@ -660,6 +892,47 @@ func TestSanitizeName(t *testing.T) {
 	}, nil)
 	if name != "Brand Model" {
 		t.Fatalf("deviceName() = %q, want sanitized manufacturer and model", name)
+	}
+}
+
+func TestStripUnsafeRunes(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "removes controls and bidi overrides",
+			input: "XML syntax error on line 1: invalid XML name: a\u009b8m\u202eevil\x1b",
+			want:  "XML syntax error on line 1: invalid XML name: a8mevil",
+		},
+		{
+			name:  "preserves spaces and Japanese",
+			input: "家の device name と 通常のスペース",
+			want:  "家の device name と 通常のスペース",
+		},
+		{
+			name:  "removes Arabic letter mark",
+			input: "Cam\u061Cera",
+			want:  "Camera",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := stripUnsafeRunes(test.input); got != test.want {
+				t.Fatalf("stripUnsafeRunes(%q) = %q, want %q", test.input, got, test.want)
+			}
+		})
+	}
+}
+
+func TestPortMappingWarningSeparatesJoinedErrors(t *testing.T) {
+	err := errors.Join(
+		errors.New("WANIPConnection: HTTP 500"),
+		errors.New("WANPPPConnection: HTTP 500"),
+	)
+	if got := portMappingWarning(err); !strings.Contains(got, "HTTP 500; WANPPPConnection:") {
+		t.Fatalf("portMappingWarning() = %q, want semicolon between joined errors", got)
 	}
 }
 
@@ -966,7 +1239,7 @@ func TestCollectHostsFiltersAndCaps(t *testing.T) {
 		neighbors[i].IP = netip.AddrFrom4([4]byte{10, 0, byte(i >> 8), byte(i)})
 	}
 	neighbors = append(neighbors, lan.Neighbor{IP: netip.MustParseAddr("8.8.8.8")})
-	got := collectHosts(neighbors, netip.MustParseAddr("192.168.1.1"), []ssdp.Response{{IP: netip.MustParseAddr("172.16.0.1")}})
+	got := collectHosts(neighbors, netip.MustParseAddr("192.168.1.1"), []ssdp.Response{{IP: netip.MustParseAddr("172.16.0.1")}}, nil)
 	if len(got) != 1024 {
 		t.Fatalf("collectHosts() returned %d hosts", len(got))
 	}
@@ -974,6 +1247,33 @@ func TestCollectHostsFiltersAndCaps(t *testing.T) {
 		if !got[i-1].Less(got[i]) {
 			t.Fatalf("hosts are not sorted: %v before %v", got[i-1], got[i])
 		}
+	}
+}
+
+func TestCollectHostsSkipsOtherInterfaceSubnets(t *testing.T) {
+	gateway := netip.MustParseAddr("192.168.1.1")
+	prefixes := []netip.Prefix{
+		netip.MustParsePrefix("192.168.1.10/24"),
+		netip.MustParsePrefix("10.0.0.5/24"),
+	}
+	scope := homePrefixes(prefixes, gateway)
+	neighbors := []lan.Neighbor{
+		{IP: netip.MustParseAddr("192.168.1.20")},
+		{IP: netip.MustParseAddr("10.0.0.7")},
+		{IP: netip.MustParseAddr("172.20.10.2")},
+	}
+	responses := []ssdp.Response{
+		{IP: netip.MustParseAddr("10.0.0.9")},
+		{IP: netip.MustParseAddr("192.168.1.30")},
+	}
+	got := collectHosts(neighbors, gateway, responses, scope)
+	want := []netip.Addr{
+		gateway,
+		netip.MustParseAddr("192.168.1.20"),
+		netip.MustParseAddr("192.168.1.30"),
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("collectHosts() = %v, want %v", got, want)
 	}
 }
 
@@ -1042,7 +1342,7 @@ func TestDeviceHostsIncludesOnlyObservedSweptHosts(t *testing.T) {
 	gateway := netip.MustParseAddr("192.168.1.1")
 	neighbors := []lan.Neighbor{{IP: gateway, MAC: "aa:bb:cc:dd:ee:ff"}}
 	scanTargets := mergeHosts(
-		collectHosts(neighbors, gateway, nil),
+		collectHosts(neighbors, gateway, nil, nil),
 		lan.SweepHosts([]netip.Prefix{netip.MustParsePrefix("192.168.1.23/24")}, gateway),
 	)
 	if len(scanTargets) != 253 {
@@ -1147,7 +1447,7 @@ func TestScanObservedNetwork(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			if test.gateway.IsValid() {
-				if hosts := collectHosts(test.neighbors, test.gateway, test.responses); len(hosts) != 1 {
+				if hosts := collectHosts(test.neighbors, test.gateway, test.responses, nil); len(hosts) != 1 {
 					t.Fatalf("gateway-only scan hosts = %v, want only the gateway", hosts)
 				}
 			}
@@ -1303,6 +1603,60 @@ func TestWriteOutputIncludesIncompleteJSON(t *testing.T) {
 	}
 }
 
+func TestWriteOutputHistoryUnavailableText(t *testing.T) {
+	var buffer bytes.Buffer
+	result := output{FirstRun: true, HistoryUnavailable: true}
+	if err := writeOutput(&buffer, result, false, "ja"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buffer.String(), i18n.T("ja", "history_unavailable")) {
+		t.Fatalf("text output = %q, missing history-unavailable message", buffer.String())
+	}
+	if strings.Contains(buffer.String(), i18n.T("ja", "first_run")) {
+		t.Fatalf("text output = %q, includes first-run message", buffer.String())
+	}
+}
+
+func TestWriteOutputFirstRunText(t *testing.T) {
+	var buffer bytes.Buffer
+	if err := writeOutput(&buffer, output{FirstRun: true}, false, "ja"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buffer.String(), i18n.T("ja", "first_run")) {
+		t.Fatalf("text output = %q, missing first-run message", buffer.String())
+	}
+}
+
+func TestWriteOutputHistoryUnavailableJSON(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		unavailable bool
+		wantPresent bool
+	}{
+		{name: "true is included", unavailable: true, wantPresent: true},
+		{name: "false is omitted", unavailable: false, wantPresent: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var buffer bytes.Buffer
+			result := output{HistoryUnavailable: test.unavailable}
+			if err := writeOutput(&buffer, result, true, "ja"); err != nil {
+				t.Fatal(err)
+			}
+			var encoded map[string]any
+			if err := json.Unmarshal(buffer.Bytes(), &encoded); err != nil {
+				t.Fatal(err)
+			}
+			value, present := encoded["history_unavailable"]
+			if present != test.wantPresent {
+				t.Fatalf("JSON key presence = %t, want %t", present, test.wantPresent)
+			}
+			if test.wantPresent && value != true {
+				t.Fatalf("JSON history_unavailable = %#v, want true", value)
+			}
+		})
+	}
+}
+
 func TestRenderTextCheckedLine(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -1317,7 +1671,7 @@ func TestRenderTextCheckedLine(t *testing.T) {
 				Score: 100, Status: "safe", Devices: make([]deviceOutput, 12),
 				Checks: checkedSummary{Ports: true, PortForwards: true, WiFi: true},
 			},
-			want: "Checked: 12 devices · risky ports · router port forwards · Wi-Fi encryption",
+			want: "Checked: 12 devices · risky ports · router UPnP port forwards · Wi-Fi encryption",
 		},
 		{
 			name: "devices and risky ports only",
@@ -1335,7 +1689,7 @@ func TestRenderTextCheckedLine(t *testing.T) {
 				Score: 100, Status: "safe", Devices: make([]deviceOutput, 12),
 				Checks: checkedSummary{Ports: true, PortForwards: true, WiFi: true},
 			},
-			want: "確認したこと: 機器 12台・危険なポート・ルーターのポート転送・Wi-Fi の暗号化",
+			want: "確認したこと: 機器 12台・危険なポート・ルーターの UPnP ポート転送・Wi-Fi の暗号化",
 		},
 	}
 	for _, test := range tests {
@@ -1376,7 +1730,7 @@ func TestRenderTextSkipsPortsWhenNoTargets(t *testing.T) {
 func TestWriteOutputOmitsCheckedLineFromJSON(t *testing.T) {
 	var buffer bytes.Buffer
 	result := output{
-		Checks:  checkedSummary{Ports: true, PortForwards: true, WiFi: true},
+		Checks:  checkedSummary{Ports: true},
 		Devices: []deviceOutput{{}},
 	}
 	if err := writeOutput(&buffer, result, true, "en"); err != nil {
@@ -1389,8 +1743,29 @@ func TestWriteOutputOmitsCheckedLineFromJSON(t *testing.T) {
 	if err := json.Unmarshal(buffer.Bytes(), &encoded); err != nil {
 		t.Fatal(err)
 	}
-	if _, exists := encoded["checks"]; exists {
-		t.Fatal("JSON output includes the rendering-only checks field")
+	checked, ok := encoded["checked"].(map[string]any)
+	if !ok {
+		t.Fatalf("JSON checked = %#v, want object", encoded["checked"])
+	}
+	if len(checked) != 3 {
+		t.Fatalf("JSON checked has %d keys, want exactly 3: %#v", len(checked), checked)
+	}
+	for _, field := range []struct {
+		name string
+		want bool
+	}{
+		{name: "ports", want: true},
+		{name: "port_forwards", want: false},
+		{name: "wifi", want: false},
+	} {
+		value, present := checked[field.name]
+		if !present {
+			t.Errorf("JSON checked is missing %q", field.name)
+			continue
+		}
+		if value != field.want {
+			t.Errorf("JSON checked.%s = %#v, want %t", field.name, value, field.want)
+		}
 	}
 }
 
@@ -1581,6 +1956,134 @@ func TestPrintNoDeviceError(t *testing.T) {
 			}
 			if got := output.String(); got != want {
 				t.Fatalf("printNoDeviceError() = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+func TestFetchDescriptionsPrefersGatewayDescription(t *testing.T) {
+	gateway := netip.MustParseAddr("192.168.1.1")
+	secondary := netip.MustParseAddr("192.168.1.50")
+	response := func(ip netip.Addr, st string, port string) ssdp.Response {
+		return ssdp.Response{
+			IP:       ip,
+			ST:       st,
+			Location: fmt.Sprintf("http://%s:%s/rootDesc.xml", ip, port),
+		}
+	}
+	igdST := "urn:schemas-upnp-org:device:InternetGatewayDevice:1"
+	tests := []struct {
+		name           string
+		ip             netip.Addr
+		responses      []ssdp.Response
+		wantLocation   string
+		wantGatewayIGD bool
+	}{
+		{
+			name: "gateway IGD beats earlier media root device",
+			ip:   gateway,
+			responses: []ssdp.Response{
+				response(gateway, "upnp:rootdevice", "8200"),
+				response(gateway, "upnp:rootdevice", "5000"),
+				response(gateway, igdST, "5000"),
+			},
+			wantLocation:   "http://192.168.1.1:5000/rootDesc.xml",
+			wantGatewayIGD: true,
+		},
+		{
+			name: "UPnP IGD beats DSL Forum IGD",
+			ip:   gateway,
+			responses: []ssdp.Response{
+				response(gateway, "urn:dslforum-org:device:InternetGatewayDevice:1", "49443"),
+				response(gateway, igdST, "5000"),
+			},
+			wantLocation:   "http://192.168.1.1:5000/rootDesc.xml",
+			wantGatewayIGD: true,
+		},
+		{
+			name: "UPnP WAN service reply beats DSL Forum IGD without IGD device reply",
+			ip:   gateway,
+			responses: []ssdp.Response{
+				response(gateway, "urn:dslforum-org:device:InternetGatewayDevice:1", "49443"),
+				response(gateway, "upnp:rootdevice", "5000"),
+				response(gateway, "urn:schemas-upnp-org:service:WANIPConnection:1", "5000"),
+			},
+			wantLocation:   "http://192.168.1.1:5000/rootDesc.xml",
+			wantGatewayIGD: true,
+		},
+		{
+			name: "UPnP MediaServer does not beat root device",
+			ip:   gateway,
+			responses: []ssdp.Response{
+				response(gateway, "urn:schemas-upnp-org:device:MediaServer:1", "8200"),
+				response(gateway, "upnp:rootdevice", "5000"),
+			},
+			wantLocation:   "http://192.168.1.1:5000/rootDesc.xml",
+			wantGatewayIGD: true,
+		},
+		{
+			name: "root device beats UUID response for non-gateway",
+			ip:   secondary,
+			responses: []ssdp.Response{
+				response(secondary, "uuid:device-1", "8200"),
+				response(secondary, "upnp:rootdevice", "5000"),
+			},
+			wantLocation: "http://192.168.1.50:5000/rootDesc.xml",
+		},
+	}
+
+	mediaDescription := `<root><device>
+<deviceType>urn:schemas-upnp-org:device:MediaServer:1</deviceType>
+<friendlyName>Media Server</friendlyName>
+</device></root>`
+	igdDescription := `<root><device>
+<deviceType>urn:schemas-upnp-org:device:InternetGatewayDevice:1</deviceType>
+<deviceList><device><deviceType>urn:schemas-upnp-org:device:WANDevice:1</deviceType>
+<deviceList><device><deviceType>urn:schemas-upnp-org:device:WANConnectionDevice:1</deviceType>
+<serviceList><service>
+<serviceType>urn:schemas-upnp-org:service:WANIPConnection:1</serviceType>
+<controlURL>/ctl/IPConn</controlURL>
+</service></serviceList>
+</device></deviceList></device></deviceList>
+</device></root>`
+	dslForumDescription := `<root><device>
+<deviceType>urn:dslforum-org:device:InternetGatewayDevice:1</deviceType>
+<friendlyName>DSL Forum Device</friendlyName>
+</device></root>`
+
+	client := &http.Client{Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
+		var body string
+		switch request.URL.Port() {
+		case "8200":
+			body = mediaDescription
+		case "5000":
+			body = igdDescription
+		case "49443":
+			body = dslForumDescription
+		default:
+			t.Errorf("unexpected description URL %q", request.URL)
+			body = mediaDescription
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Request:    request,
+		}, nil
+	})}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			devices, errs := fetchDescriptions(context.Background(), client, test.responses, gateway)
+			description, ok := devices[test.ip]
+			if !ok {
+				t.Fatalf("fetchDescriptions() has no device for %s; errors: %v", test.ip, errs)
+			}
+			if description.Location != test.wantLocation {
+				t.Fatalf("description location = %q, want %q", description.Location, test.wantLocation)
+			}
+			if test.wantGatewayIGD && (!description.Device.IsIGD() || len(description.Device.WANConnections()) != 1) {
+				t.Fatalf("gateway description = %#v, want IGD with one WAN connection", description.Device)
 			}
 		})
 	}

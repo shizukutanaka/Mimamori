@@ -9,32 +9,27 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
-func ParsePTRResponse(b []byte) (question string, target string, ok bool) {
+func ParsePTRAnswer(b []byte, question string) (target string, ok bool) {
 	if len(b) < 12 {
-		return "", "", false
+		return "", false
 	}
 
 	flags := binary.BigEndian.Uint16(b[2:4])
 	if flags&0x8000 == 0 || flags&0x000f != 0 {
-		return "", "", false
+		return "", false
 	}
 
 	questionCount := int(binary.BigEndian.Uint16(b[4:6]))
 	answerCount := int(binary.BigEndian.Uint16(b[6:8]))
-	if questionCount == 0 {
-		return "", "", false
-	}
 
 	offset := 12
 	for i := 0; i < questionCount; i++ {
-		name, next, valid := parseDNSName(b, offset)
+		_, next, valid := parseDNSName(b, offset)
 		if !valid || next > len(b)-4 {
-			return "", "", false
-		}
-		if i == 0 {
-			question = name
+			return "", false
 		}
 		offset = next + 4
 	}
@@ -42,7 +37,7 @@ func ParsePTRResponse(b []byte) (question string, target string, ok bool) {
 	for i := 0; i < answerCount; i++ {
 		owner, next, valid := parseDNSName(b, offset)
 		if !valid || next > len(b)-10 {
-			return "", "", false
+			return "", false
 		}
 
 		recordType := binary.BigEndian.Uint16(b[next : next+2])
@@ -50,21 +45,22 @@ func ParsePTRResponse(b []byte) (question string, target string, ok bool) {
 		dataLength := int(binary.BigEndian.Uint16(b[next+8 : next+10]))
 		dataStart := next + 10
 		if dataLength > len(b)-dataStart {
-			return "", "", false
+			return "", false
 		}
 		dataEnd := dataStart + dataLength
 
-		if recordType == 12 && class&0x7fff == 1 && owner == question {
+		if recordType == 12 && class&0x7fff == 1 &&
+			strings.ToLower(owner) == strings.ToLower(question) {
 			name, end, valid := parseDNSName(b, dataStart)
 			if !valid || end != dataEnd {
-				return "", "", false
+				return "", false
 			}
-			return question, name, true
+			return name, true
 		}
 		offset = dataEnd
 	}
 
-	return "", "", false
+	return "", false
 }
 
 func ReverseNames(ctx context.Context, hosts []netip.Addr, timeout time.Duration) map[netip.Addr]string {
@@ -144,12 +140,15 @@ func reverseNames(
 		if !queried {
 			continue
 		}
-		responseQuestion, target, valid := ParsePTRResponse(packet[:n])
-		if !valid || responseQuestion != expectedQuestion {
+		target, valid := ParsePTRAnswer(packet[:n], expectedQuestion)
+		if !valid {
 			continue
 		}
-		target = strings.TrimSuffix(target, ".local")
-		if target == "" {
+		if len(target) >= len(".local") &&
+			strings.EqualFold(target[len(target)-len(".local"):], ".local") {
+			target = target[:len(target)-len(".local")]
+		}
+		if target == "" || !utf8.ValidString(target) {
 			continue
 		}
 		if _, exists := names[sourceIP]; !exists {
@@ -234,7 +233,7 @@ func parseDNSName(packet []byte, start int) (string, int, bool) {
 				if next == -1 {
 					next = position
 				}
-				return strings.ToLower(strings.Join(labels, ".")), next, true
+				return strings.Join(labels, "."), next, true
 			}
 			if position+length > len(packet) {
 				return "", 0, false

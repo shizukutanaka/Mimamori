@@ -2,11 +2,13 @@
 
 Mimamori answers a simple question: **“Is my home network safe right now?”** It looks for a few high-impact risks and explains what to do, rather than presenting packet details. It is a single static Go binary for Windows, macOS, and Linux; it needs no administrator/root access. It also checks whether another private address uses the router's MAC address, a possible sign of ARP spoofing.
 
-It checks devices visible in the local neighbor table, the default gateway, UPnP device descriptions, a small set of risky services (Telnet, FTP, VNC, and Android Debug Bridge (ADB) on TCP port 5555), and the connected Wi-Fi security using read-only operating-system tools. It also tries those risky-service ports on every address in the home subnet (up to 254), covering devices this PC has not talked to; it only attempts connections and changes nothing. Router UPnP port forwards are read with a read-only query. The score ranges from 0 to 100; findings explain the recommended fix and points recovered.
+It checks devices visible in the local neighbor table, the default gateway, UPnP device descriptions, and the connected Wi-Fi security using read-only operating-system tools. On every address in the home subnet (up to 254), including devices this PC has not talked to, it checks a small set of risky services: Telnet (TCP 23/2323), FTP (21), VNC (5900), Android Debug Bridge (ADB, 5555), Windows file sharing (SMB, 445), RTSP cameras (554/8554), MQTT brokers (1883), and the go2rtc camera relay's web API (1984). The PC running Mimamori is not checked, because a connection to itself does not show what other devices can reach; to check it, run Mimamori on another computer on the same network. For FTP, VNC, ADB, RTSP, MQTT, and go2rtc, it then sends one standard request without a password to see whether the service lets anyone in (FTP's anonymous login, a VNC or ADB handshake, an RTSP `DESCRIBE`, an MQTT `CONNECT`, or a go2rtc `GET /api`). For SMB, it sends one connection request to see whether the device still accepts the old SMBv1 protocol. It never guesses passwords, opens files, watches video, or sends commands, and it changes nothing. Router UPnP port forwards are read with a read-only query, and devices whose UPnP description reports a known-vulnerable libupnp or MiniUPnPd version are flagged. Many routers list only forwards that apps created through UPnP, so forwards set by hand in the router's admin page may not appear; check those in the router's settings. The score ranges from 0 to 100; findings explain the recommended fix and points recovered.
 
 Mimamori never changes settings, contacts the Internet, or sends telemetry. Network discovery and checks stay on the private LAN. Its only persistent data is a local device-history file, used to report newly seen devices.
 
 On Linux, the Wi-Fi security check uses `nmcli`, falling back to `wpa_cli status` when NetworkManager is unavailable.
+
+Run Mimamori only on networks you own or manage, such as your home network. On café, hotel, school, or work networks it would probe other people's devices, which may break that network's rules or set off its intrusion alarms.
 
 ## Download and run
 
@@ -52,9 +54,9 @@ After extracting, run Mimamori from a terminal:
 ./mimamori --state ./devices.json --wait 5s
 ```
 
-On Windows, run `mimamori.exe` (for example, `.\mimamori.exe --lang ja`) or double-click it in Explorer. When launched by double-click, the window stays open until you press Enter so you can read the results. The first run learns the devices on your network; new-device notices begin on the next run. By default, history is stored under your OS user configuration directory in `Mimamori/devices.json`.
+On Windows, run `mimamori.exe` (for example, `.\mimamori.exe --lang ja`) or double-click it in Explorer. When launched by double-click, the window stays open until you press Enter so you can read the results. The first run learns the devices on your network; new-device notices begin on the next run. By default, history is stored under your OS user configuration directory in `Mimamori/devices.json`. The history is not separated by network. If you also check another network you manage (for example, your parents' home), use a separate file for it, such as `--state ./parents.json`. Otherwise, every device there is reported as new on the first check, and those devices are no longer reported as new if they later appear at home.
 
-Supported languages: English (`en`), Japanese (`ja`), Simplified Chinese (`zh-Hans`), Traditional Chinese (`zh-Hant`), Spanish (`es`), Portuguese (`pt`), French (`fr`), German (`de`), Russian (`ru`), Korean (`ko`), and Indonesian (`id`). By default, Mimamori checks `LANGUAGE`, `LC_ALL`, `LC_MESSAGES`, then `LANG`; when these are empty, it uses the display language on Windows and the preferred language (System Settings → General → Language & Region) on macOS. Use `--lang` with a language code or regional tag, such as `--lang pt-BR` or `--lang zh_TW`, to choose explicitly. Use `--json` for indented JSON output.
+Supported languages: English (`en`), Japanese (`ja`), Simplified Chinese (`zh-Hans`), Traditional Chinese (`zh-Hant`), Spanish (`es`), Portuguese (`pt`), French (`fr`), German (`de`), Russian (`ru`), Korean (`ko`), and Indonesian (`id`). By default, Mimamori checks `LANGUAGE`, `LC_ALL`, `LC_MESSAGES`, then `LANG`; when these are empty, it uses the display language on Windows and the preferred language (System Settings → General → Language & Region) on macOS. Use `--lang` with a language code or regional tag, such as `--lang pt-BR` or `--lang zh_TW`, to choose explicitly. Use `--json` for indented JSON output. Its `checked` object (`ports`, `port_forwards`, `wifi`) shows which checks actually ran; `false` means not checked, not safe.
 
 Example:
 
@@ -71,7 +73,9 @@ Devices
   192.168.1.1      aa:bb:cc:dd:ee:ff  Router
 ```
 
-Exit codes: `0` means no danger finding (caution findings may still be present), `2` means at least one danger finding, and `1` means a flag or operational error; it is also returned when no device could be checked, and a corrupt history file is kept as `devices.json.corrupt` (or `.corrupt.1`, `.corrupt.2`, … if older backups exist).
+Exit codes: `0` means no danger finding (caution findings may still be present), `2` means at least one danger finding, and `1` means a flag or operational error; it is also returned when no device could be checked, and a corrupt history file is kept as `devices.json.corrupt` (or `.corrupt.1`, `.corrupt.2`, … if older backups exist). A danger finding still returns `2` even if the device history cannot be saved. `0` is also returned when part of the check could not run; the text output then shows an incomplete notice and `--json` sets `"incomplete": true`, so scheduled scripts should check that field too.
+
+On Windows, a run started directly by Task Scheduler may also wait for Enter, as with a double-click, so the task keeps running; add `--json` for scheduled runs (it never waits).
 
 ## Build from source
 
@@ -90,11 +94,13 @@ To add a language, add a catalog file in `internal/i18n` and list its code in `S
 
 Mimamori は「今、家のネットワークは安全だろうか？」という疑問に答える診断ツールです。通信の細かな情報ではなく、特に注意が必要な状態と対処方法をわかりやすく伝えます。Windows・macOS・Linux で動く、管理者権限がいらない単一の Go バイナリです。ルーターと同じ MAC アドレスを使う別のプライベート IP アドレスがないかも確認し、ARP スプーフィングの兆候を調べます。
 
-近くで確認できる機器、標準ゲートウェイ、UPnP の機器情報、危険につながりやすい Telnet・FTP・VNC・Android Debug Bridge（ADB、TCP 5555）の入口に加え、OS の機能だけを使って接続中 Wi-Fi の安全方式も読み取り専用で確認します。さらに、自宅サブネット内の全アドレス（最大 254 件）にも危険なサービスのポートへの接続を試み、この PC と通信したことがない機器も確認します。接続を試みるだけで、設定は変更しません。ルーターの UPnP ポート転送も読み取り専用の問い合わせで調べます。点数は 0〜100 点で、見つかった問題ごとに対処方法と回復する点数を表示します。
+近くで確認できる機器、標準ゲートウェイ、UPnP の機器情報に加え、OS の機能だけを使って接続中 Wi-Fi の安全方式も読み取り専用で確認します。さらに、自宅サブネット内の全アドレス（最大 254 件）について、この PC と通信したことがない機器も含め、危険につながりやすいサービスの入口を確認します。対象は Telnet（TCP 23・2323）、FTP（21）、VNC（5900）、Android Debug Bridge（ADB、5555）、Windows のファイル共有の SMB（445）、防犯カメラの RTSP（554・8554）、スマートホームの MQTT（1883）、カメラの映像を中継する go2rtc の管理画面（1984）です。診断している PC 自身は調べません。自分への接続では、ほかの機器からどう見えるかが分からないためです。この PC を調べるには、同じネットワークの別のパソコンで Mimamori を実行してください。FTP・VNC・ADB・RTSP・MQTT・go2rtc では、パスワードなしで誰でも使える状態かを確かめるため、標準の手順で 1 回だけ問い合わせます（FTP の匿名ログイン、VNC・ADB の接続開始、RTSP の `DESCRIBE`、MQTT の `CONNECT`、go2rtc の `GET /api`）。SMB では、古い SMBv1 をまだ受け付けるかを確かめるため、接続の申し込みを 1 回だけ送ります。パスワードを推測したり、ファイルや映像を開いたり、操作の命令を送ったりはせず、設定も変更しません。ルーターの UPnP ポート転送も読み取り専用の問い合わせで調べ、既知の脆弱性がある古い libupnp・MiniUPnPd を使う機器も知らせます。多くのルーターは、アプリが UPnP で作った転送だけを返すため、ルーターの設定画面で手で作った転送は表示されないことがあります。それらはルーターの設定画面で確かめてください。点数は 0〜100 点で、見つかった問題ごとに対処方法と回復する点数を表示します。
 
 設定を変更せず、インターネットへ接続せず、利用状況も送信しません。機器の確認は家のネットワーク内だけで行います。保存するのは、新しい機器を次回から知らせるための機器履歴ファイルだけです。
 
 Linux では Wi-Fi の安全方式を `nmcli` で確認し、NetworkManager が利用できない場合は `wpa_cli status` を使います。
+
+Mimamori は、自宅など自分で管理しているネットワークでだけ実行してください。カフェ・ホテル・学校・会社などのネットワークで実行すると、他人の機器のポートまで確認することになり、そのネットワークの規約に反したり、侵入検知の警報が鳴ったりするおそれがあります。
 
 ## ダウンロードと実行
 
@@ -140,11 +146,13 @@ Linux:   sha256sum -c SHA256SUMS --ignore-missing
 ./mimamori --state ./devices.json --wait 5s
 ```
 
-Windows では `mimamori.exe` を実行してください（例: `.\mimamori.exe --lang ja`）。エクスプローラーからダブルクリックしても起動でき、その場合は結果を読めるよう Enter キーを押すまでウィンドウが開いたままになります。初回は家の機器を記録し、新しい機器のお知らせは次回から表示します。履歴は通常、OS のユーザー設定フォルダーにある `Mimamori/devices.json` に保存されます。
+Windows では `mimamori.exe` を実行してください（例: `.\mimamori.exe --lang ja`）。エクスプローラーからダブルクリックしても起動でき、その場合は結果を読めるよう Enter キーを押すまでウィンドウが開いたままになります。初回は家の機器を記録し、新しい機器のお知らせは次回から表示します。履歴は通常、OS のユーザー設定フォルダーにある `Mimamori/devices.json` に保存されます。履歴はネットワークごとに分かれていません。実家など、自分で管理する別のネットワークも確認する場合は、`--state ./parents.json` のように別のファイルを指定してください。指定しないと、そのネットワークの機器が初回からすべて「新しい機器」として表示され、その機器が後で家に来ても「新しい機器」として表示されなくなります。
 
-対応言語: 英語（`en`）、日本語（`ja`）、簡体字中国語（`zh-Hans`）、繁体字中国語（`zh-Hant`）、スペイン語（`es`）、ポルトガル語（`pt`）、フランス語（`fr`）、ドイツ語（`de`）、ロシア語（`ru`）、韓国語（`ko`）、インドネシア語（`id`）。言語は `LANGUAGE`、`LC_ALL`、`LC_MESSAGES`、`LANG` の順で自動判定し、これらが空の場合は Windows では表示言語、macOS では「システム設定 → 一般 → 言語と地域」の優先する言語を使います。`--lang pt-BR` や `--lang zh_TW` のように、言語コードや地域タグで指定できます。`--json` で整形済み JSON を出力できます。
+対応言語: 英語（`en`）、日本語（`ja`）、簡体字中国語（`zh-Hans`）、繁体字中国語（`zh-Hant`）、スペイン語（`es`）、ポルトガル語（`pt`）、フランス語（`fr`）、ドイツ語（`de`）、ロシア語（`ru`）、韓国語（`ko`）、インドネシア語（`id`）。言語は `LANGUAGE`、`LC_ALL`、`LC_MESSAGES`、`LANG` の順で自動判定し、これらが空の場合は Windows では表示言語、macOS では「システム設定 → 一般 → 言語と地域」の優先する言語を使います。`--lang pt-BR` や `--lang zh_TW` のように、言語コードや地域タグで指定できます。`--json` で整形済み JSON を出力できます。JSON の `checked`（`ports`・`port_forwards`・`wifi`）は実際に確認できた項目を示し、`false` は「安全」ではなく「確認できなかった」という意味です。
 
-終了コード: `0` は危険な問題なし（注意事項が表示される場合があります）、`2` は危険な問題あり、`1` はオプションまたは動作上のエラーです。確認できる機器がなかった場合にも `1` が返され、壊れた履歴ファイルは `devices.json.corrupt`（古いバックアップがある場合は `.corrupt.1`、`.corrupt.2` など）として残されます。
+終了コード: `0` は危険な問題なし（注意事項が表示される場合があります）、`2` は危険な問題あり、`1` はオプションまたは動作上のエラーです。確認できる機器がなかった場合にも `1` が返され、壊れた履歴ファイルは `devices.json.corrupt`（古いバックアップがある場合は `.corrupt.1`、`.corrupt.2` など）として残されます。履歴を保存できなかった場合でも、危険な問題があれば `2` を返します。確認の一部ができなかった場合も `0` を返します。その場合は、画面に「不完全な可能性」の案内が表示され、`--json` では `"incomplete": true` になります。定期実行のスクリプトでは、この項目も確かめてください。
+
+Windows では、タスク スケジューラーから直接起動した場合も、ダブルクリックと同じく Enter キーを待ち、タスクが終わらないことがあります。定期実行では `--json` を付けてください（`--json` では待ちません）。
 
 ```text
 Mimamori — 家の安全診断
