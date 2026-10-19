@@ -156,7 +156,9 @@ func TestVulnerableUPnPComponent(t *testing.T) {
 	}{
 		{name: "libupnp 1.6.6", server: "Portable SDK for UPnP devices/1.6.6", want: "libupnp 1.6.6", vulnerable: true},
 		{name: "libupnp 1.6.17", server: "Portable SDK for UPnP devices/1.6.17", want: "libupnp 1.6.17", vulnerable: true},
-		{name: "libupnp threshold", server: "Portable SDK for UPnP devices/1.6.18"},
+		{name: "libupnp 1.6.18", server: "Portable SDK for UPnP devices/1.6.18", want: "libupnp 1.6.18", vulnerable: true},
+		{name: "libupnp 1.6.20", server: "Portable SDK for UPnP devices/1.6.20", want: "libupnp 1.6.20", vulnerable: true},
+		{name: "libupnp threshold", server: "Portable SDK for UPnP devices/1.6.21"},
 		{name: "libupnp newer minor", server: "Portable SDK for UPnP devices/1.8.0"},
 		{name: "libupnp numeric minor", server: "Portable SDK for UPnP devices/1.14.0"},
 		{name: "Intel SDK case insensitive", server: "intel sdk for upnp devices/", want: "Intel SDK for UPnP devices (all versions)", vulnerable: true},
