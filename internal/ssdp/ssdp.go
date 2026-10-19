@@ -450,6 +450,8 @@ func (d Device) WANConnections() []Service {
 	var collect func(Device)
 	collect = func(device Device) {
 		for _, service := range device.Services {
+			service.ServiceType = strings.TrimSpace(service.ServiceType)
+			service.ControlURL = strings.TrimSpace(service.ControlURL)
 			if !strings.Contains(service.ServiceType, ":service:WANIPConnection:") &&
 				!strings.Contains(service.ServiceType, ":service:WANPPPConnection:") {
 				continue
@@ -489,7 +491,9 @@ func AllowedLocation(location string, from netip.Addr) bool {
 }
 
 func ControlURL(location, urlBase, controlURL string, from netip.Addr) (string, bool) {
-	if strings.TrimSpace(controlURL) == "" {
+	controlURL = strings.TrimSpace(controlURL)
+	urlBase = strings.TrimSpace(urlBase)
+	if controlURL == "" {
 		return "", false
 	}
 	base := location
