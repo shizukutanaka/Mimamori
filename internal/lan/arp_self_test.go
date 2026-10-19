@@ -68,7 +68,7 @@ func TestWithoutAddressesRemovesMacOSSelfEntry(t *testing.T) {
 }
 
 func TestLocalAddressesIncludesLoopback(t *testing.T) {
-	if _, ok := localAddresses()[netip.MustParseAddr("127.0.0.1")]; !ok {
-		t.Fatal("localAddresses() does not contain 127.0.0.1")
+	if _, ok := LocalAddresses()[netip.MustParseAddr("127.0.0.1")]; !ok {
+		t.Fatal("LocalAddresses() does not contain 127.0.0.1")
 	}
 }

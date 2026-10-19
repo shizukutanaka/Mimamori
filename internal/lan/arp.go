@@ -105,7 +105,7 @@ func ReadARP(ctx context.Context) ([]Neighbor, error) {
 		if err != nil {
 			return nil, err
 		}
-		return withoutAddresses(ParseARP(string(data)), localAddresses()), nil
+		return withoutAddresses(ParseARP(string(data)), LocalAddresses()), nil
 	}
 
 	name, args := "arp", []string{"-an"}
@@ -116,10 +116,11 @@ func ReadARP(ctx context.Context) ([]Neighbor, error) {
 	if err != nil {
 		return nil, fmt.Errorf("arp table: %w", err)
 	}
-	return withoutAddresses(ParseARP(string(output)), localAddresses()), nil
+	return withoutAddresses(ParseARP(string(output)), LocalAddresses()), nil
 }
 
-func localAddresses() map[netip.Addr]struct{} {
+// LocalAddresses returns the IP addresses assigned to this computer's interfaces.
+func LocalAddresses() map[netip.Addr]struct{} {
 	addresses, err := net.InterfaceAddrs()
 	if err != nil {
 		return nil
