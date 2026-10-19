@@ -380,20 +380,20 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 		store.Prune(now, 30*24*time.Hour, lan.IsRandomizedMAC)
 		if err := baseline.Save(*statePath, store); err != nil {
 			fmt.Fprintf(stderr, "warning: cannot save device history: %v\n", err)
-			return finish(exitCode(findings, true))
+			return finish(exitCode(findings, loadState, true))
 		}
 	}
 
-	return finish(exitCode(findings, false))
+	return finish(exitCode(findings, loadState, false))
 }
 
-func exitCode(findings []report.Finding, historySaveFailed bool) int {
+func exitCode(findings []report.Finding, loadState historyLoadState, historySaveFailed bool) int {
 	for _, finding := range findings {
 		if finding.Level == report.Danger {
 			return 2
 		}
 	}
-	if historySaveFailed {
+	if historySaveFailed || loadState == historyLoadUnavailable {
 		return 1
 	}
 	return 0

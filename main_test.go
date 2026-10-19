@@ -31,18 +31,23 @@ func TestExitCode(t *testing.T) {
 	tests := []struct {
 		name              string
 		findings          []report.Finding
+		loadState         historyLoadState
 		historySaveFailed bool
 		want              int
 	}{
-		{name: "danger and history save failed", findings: []report.Finding{danger}, historySaveFailed: true, want: 2},
-		{name: "caution and history save failed", findings: []report.Finding{caution}, historySaveFailed: true, want: 1},
-		{name: "danger and history saved", findings: []report.Finding{danger}, want: 2},
-		{name: "caution and history saved", findings: []report.Finding{caution}, want: 0},
-		{name: "no findings and history saved", want: 0},
+		{name: "danger and history save failed", findings: []report.Finding{danger}, loadState: historyLoadReady, historySaveFailed: true, want: 2},
+		{name: "caution and history save failed", findings: []report.Finding{caution}, loadState: historyLoadReady, historySaveFailed: true, want: 1},
+		{name: "danger and history saved", findings: []report.Finding{danger}, loadState: historyLoadReady, want: 2},
+		{name: "caution and history saved", findings: []report.Finding{caution}, loadState: historyLoadReady, want: 0},
+		{name: "no findings and history saved", loadState: historyLoadReady, want: 0},
+		{name: "caution and history unreadable", findings: []report.Finding{caution}, loadState: historyLoadUnavailable, want: 1},
+		{name: "no findings and history unreadable", loadState: historyLoadUnavailable, want: 1},
+		{name: "danger and history unreadable", findings: []report.Finding{danger}, loadState: historyLoadUnavailable, want: 2},
+		{name: "quarantined history", loadState: historyLoadQuarantined, want: 0},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := exitCode(test.findings, test.historySaveFailed); got != test.want {
+			if got := exitCode(test.findings, test.loadState, test.historySaveFailed); got != test.want {
 				t.Fatalf("exitCode() = %d, want %d", got, test.want)
 			}
 		})
