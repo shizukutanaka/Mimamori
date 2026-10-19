@@ -331,6 +331,26 @@ func TestRTSP8554Finding(t *testing.T) {
 	}
 }
 
+func TestRTSPFindingDeduplicatedAcrossPorts(t *testing.T) {
+	ip := netip.MustParseAddr("192.168.1.23")
+	findings := makeFindings(
+		[]probe.Open{{IP: ip, Port: 554}, {IP: ip, Port: 8554}},
+		nil,
+		netip.Addr{},
+		map[netip.Addr]ssdp.Description{},
+		map[netip.Addr]string{ip: "Home Assistant"},
+		nil,
+		nil,
+		"en",
+	)
+	if len(findings) != 1 {
+		t.Fatalf("makeFindings() returned %d findings, want one: %#v", len(findings), findings)
+	}
+	if findings[0].ID != "rtsp_noauth" || findings[0].IP != ip.String() {
+		t.Fatalf("RTSP finding = %#v, want one rtsp_noauth finding for %s", findings[0], ip)
+	}
+}
+
 func TestNewDeviceFindingClassification(t *testing.T) {
 	ip := netip.MustParseAddr("192.168.1.11")
 	deviceName := "My phone"

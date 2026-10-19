@@ -882,6 +882,7 @@ func makeFindings(
 ) []report.Finding {
 	findings := make([]report.Finding, 0)
 	telnetSeen := make(map[netip.Addr]struct{})
+	rtspSeen := make(map[netip.Addr]struct{})
 	for _, item := range opened {
 		name := deviceNames[item.IP]
 		switch item.Port {
@@ -906,6 +907,10 @@ func makeFindings(
 		case 5555:
 			findings = append(findings, report.Finding{ID: "adb_open", Level: report.Caution, Points: 8, IP: item.IP.String(), Device: name})
 		case 554, 8554:
+			if _, exists := rtspSeen[item.IP]; exists {
+				continue
+			}
+			rtspSeen[item.IP] = struct{}{}
 			findings = append(findings, report.Finding{ID: "rtsp_noauth", Level: report.Caution, Points: 8, IP: item.IP.String(), Device: name})
 		case adbNoAuthPort:
 			findings = append(findings, report.Finding{ID: "adb_noauth", Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name})
