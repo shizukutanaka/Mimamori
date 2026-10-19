@@ -8,6 +8,8 @@ Mimamori never changes settings, contacts the Internet, or sends telemetry. Netw
 
 On Linux, the Wi-Fi security check uses `nmcli`, falling back to `wpa_cli status` when NetworkManager is unavailable.
 
+Run Mimamori only on networks you own or manage, such as your home network. On café, hotel, school, or work networks it would probe other people's devices, which may break that network's rules or set off its intrusion alarms.
+
 ## Download and run
 
 Download the latest release from [GitHub Releases](https://github.com/shizukutanaka/Mimamori/releases/latest). Choose the file for your PC; `<version>` is the release tag shown on that page:
@@ -95,6 +97,8 @@ Mimamori は「今、家のネットワークは安全だろうか？」とい�
 設定を変更せず、インターネットへ接続せず、利用状況も送信しません。機器の確認は家のネットワーク内だけで行います。保存するのは、新しい機器を次回から知らせるための機器履歴ファイルだけです。
 
 Linux では Wi-Fi の安全方式を `nmcli` で確認し、NetworkManager が利用できない場合は `wpa_cli status` を使います。
+
+Mimamori は、自宅など自分で管理しているネットワークでだけ実行してください。カフェ・ホテル・学校・会社などのネットワークで実行すると、他人の機器のポートまで確認することになり、そのネットワークの規約に反したり、侵入検知の警報が鳴ったりするおそれがあります。
 
 ## ダウンロードと実行
 
