@@ -1315,7 +1315,7 @@ func TestRenderTextCheckedLine(t *testing.T) {
 			lang: "en",
 			result: output{
 				Score: 100, Status: "safe", Devices: make([]deviceOutput, 12),
-				Checks: checkedSummary{PortForwards: true, WiFi: true},
+				Checks: checkedSummary{Ports: true, PortForwards: true, WiFi: true},
 			},
 			want: "Checked: 12 devices · risky ports · router port forwards · Wi-Fi encryption",
 		},
@@ -1324,6 +1324,7 @@ func TestRenderTextCheckedLine(t *testing.T) {
 			lang: "en",
 			result: output{
 				Score: 100, Status: "safe", Devices: []deviceOutput{{}},
+				Checks: checkedSummary{Ports: true},
 			},
 			want: "Checked: 1 device · risky ports",
 		},
@@ -1332,7 +1333,7 @@ func TestRenderTextCheckedLine(t *testing.T) {
 			lang: "ja",
 			result: output{
 				Score: 100, Status: "safe", Devices: make([]deviceOutput, 12),
-				Checks: checkedSummary{PortForwards: true, WiFi: true},
+				Checks: checkedSummary{Ports: true, PortForwards: true, WiFi: true},
 			},
 			want: "確認したこと: 機器 12台・危険なポート・ルーターのポート転送・Wi-Fi の暗号化",
 		},
@@ -1352,10 +1353,30 @@ func TestRenderTextCheckedLine(t *testing.T) {
 	}
 }
 
+func TestRenderTextSkipsPortsWhenNoTargets(t *testing.T) {
+	device := deviceOutput{IP: "192.168.1.20"}
+	result := output{
+		Score: 100, Status: "safe", Devices: []deviceOutput{device},
+		Checks: checkedSummary{WiFi: true},
+	}
+	var buffer bytes.Buffer
+	renderText(&buffer, result, "en")
+	text := buffer.String()
+
+	if strings.Contains(text, i18n.T("en", "checked_ports")) {
+		t.Fatalf("renderText() claims a port check with no scan targets: %q", text)
+	}
+	if !strings.Contains(text, i18n.T("en", "checked_devices", i18n.CheckedDeviceCount("en", 1))) ||
+		!strings.Contains(text, i18n.T("en", "checked_wifi")) ||
+		!strings.Contains(text, device.IP) {
+		t.Fatalf("renderText() omitted devices or Wi-Fi check: %q", text)
+	}
+}
+
 func TestWriteOutputOmitsCheckedLineFromJSON(t *testing.T) {
 	var buffer bytes.Buffer
 	result := output{
-		Checks:  checkedSummary{PortForwards: true, WiFi: true},
+		Checks:  checkedSummary{Ports: true, PortForwards: true, WiFi: true},
 		Devices: []deviceOutput{{}},
 	}
 	if err := writeOutput(&buffer, result, true, "en"); err != nil {
@@ -1387,7 +1408,10 @@ func TestRenderTextShowsLocalizedIncompleteNotice(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var buffer bytes.Buffer
-			renderText(&buffer, output{Score: 100, Status: "safe", Incomplete: test.incomplete}, "ja")
+			renderText(&buffer, output{
+				Score: 100, Status: "safe", Incomplete: test.incomplete,
+				Checks: checkedSummary{Ports: true},
+			}, "ja")
 			lines := strings.Split(strings.TrimSuffix(buffer.String(), "\n"), "\n")
 			if len(lines) < 3 {
 				t.Fatalf("renderText() output has too few lines: %q", buffer.String())
@@ -1488,6 +1512,7 @@ func TestWiFiLocationRequiredTextAndJSON(t *testing.T) {
 	var textOutput bytes.Buffer
 	renderText(&textOutput, output{
 		Score: 100, Status: "safe", Incomplete: true, WiFiLocationRequired: true,
+		Checks: checkedSummary{Ports: true},
 	}, "ja")
 	lines := strings.Split(strings.TrimSuffix(textOutput.String(), "\n"), "\n")
 	if len(lines) < 5 {

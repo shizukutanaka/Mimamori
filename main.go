@@ -53,6 +53,7 @@ type output struct {
 }
 
 type checkedSummary struct {
+	Ports        bool
 	PortForwards bool
 	WiFi         bool
 }
@@ -102,7 +103,9 @@ type descriptionResult struct {
 }
 
 func main() {
+	restoreQuickEdit := console.DisableQuickEdit()
 	result := run(os.Args[1:], os.Stdout, os.Stderr)
+	restoreQuickEdit()
 	if result.pause && console.ShouldPause() {
 		fmt.Fprint(os.Stdout, i18n.T(result.lang, "press_enter"))
 		_, _ = bufio.NewReader(os.Stdin).ReadString('\n')
@@ -250,6 +253,8 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 	opened := probe.Scan(ctx, scanTargets, []int{23, 2323, 21, 5900, 5555, 554}, 700*time.Millisecond, 128)
 	opened = markUnauthenticatedRTSP(ctx, opened)
 	neighbors := arp.neighbors
+	opened = markUnauthenticatedVNC(ctx, opened)
+	opened = markUnauthenticatedADB(ctx, opened)
 	if len(scanTargets) > len(initialHosts) {
 		refreshed, err := lan.ReadARP(ctx)
 		if err != nil {
@@ -333,6 +338,7 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 	}
 
 	findings := makeFindings(opened, discovery.responses, gatewayIP, descriptions, deviceNames, newDeviceFindings, portMappings, lang)
+	findings = markAnonymousFTP(findings, anonymousFTPHosts(ctx, opened), lang)
 	findings = append(findings, wifiFs...)
 	findings = append(findings, gatewaySpoofFindings(gatewayNeighbors(ctx, neighbors, gatewayIP, lan.ReadARP), gatewayIP, lang)...)
 	report.Sort(findings)
@@ -343,6 +349,7 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 		Version: version, Score: report.Score(findings), Status: status, FirstRun: firstRun, Incomplete: incomplete,
 		WiFiLocationRequired: errors.Is(wifiCheck.err, wifi.ErrLocationPermission),
 		Checks: checkedSummary{
+			Ports:        len(scanTargets) > 0,
 			PortForwards: gatewayIP.IsValid() && portMappingQueryRan && portMappingErr == nil,
 			WiFi:         wifiCheck.err == nil && wifiCheck.security != wifi.Unknown,
 		},
@@ -581,18 +588,34 @@ func fetchPortMappings(
 	if !ok {
 		return nil, false, fmt.Errorf("router advertises UPnP but its port forwarding list cannot be queried")
 	}
-	service, ok := description.Device.WANConnection()
-	if !ok {
-		return nil, false, fmt.Errorf("router advertises UPnP but its port forwarding list cannot be queried")
+	type serviceEndpoint struct {
+		service    ssdp.Service
+		controlURL string
 	}
-	controlURL, ok := ssdp.ControlURL(description.Location, description.URLBase, service.ControlURL, routerIP)
-	if !ok {
+	endpoints := make([]serviceEndpoint, 0)
+	var errs []error
+	for _, service := range description.Device.WANConnections() {
+		controlURL, ok := ssdp.ControlURL(description.Location, description.URLBase, service.ControlURL, routerIP)
+		if !ok {
+			errs = append(errs, fmt.Errorf("%s: control URL is not on the router", service.ServiceType))
+			continue
+		}
+		endpoints = append(endpoints, serviceEndpoint{service: service, controlURL: controlURL})
+	}
+	if len(endpoints) == 0 {
 		return nil, false, fmt.Errorf("router advertises UPnP but its port forwarding list cannot be queried")
 	}
 	queryContext, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
-	mappings, err := ssdp.PortMappings(queryContext, client, controlURL, service.ServiceType)
-	return mappings, true, err
+	var mappings []ssdp.PortMapping
+	for _, endpoint := range endpoints {
+		serviceMappings, err := ssdp.PortMappings(queryContext, client, endpoint.controlURL, endpoint.service.ServiceType)
+		mappings = append(mappings, serviceMappings...)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", endpoint.service.ServiceType, err))
+		}
+	}
+	return mappings, true, errors.Join(errs...)
 }
 
 func fetchDescriptions(ctx context.Context, client *http.Client, responses []ssdp.Response) (map[netip.Addr]ssdp.Description, []error) {
@@ -763,10 +786,14 @@ func makeFindings(
 			findings = append(findings, report.Finding{ID: "ftp_open", Level: report.Caution, Points: 8, IP: item.IP.String(), Device: name})
 		case 5900:
 			findings = append(findings, report.Finding{ID: "vnc_open", Level: report.Caution, Points: 8, IP: item.IP.String(), Device: name})
+		case vncNoAuthPort:
+			findings = append(findings, report.Finding{ID: "vnc_noauth", Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name})
 		case 5555:
 			findings = append(findings, report.Finding{ID: "adb_open", Level: report.Caution, Points: 8, IP: item.IP.String(), Device: name})
 		case 554:
 			findings = append(findings, report.Finding{ID: "rtsp_noauth", Level: report.Caution, Points: 8, IP: item.IP.String(), Device: name})
+		case adbNoAuthPort:
+			findings = append(findings, report.Finding{ID: "adb_noauth", Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name})
 		}
 	}
 	for ip, findingID := range newDeviceFindings {
@@ -814,6 +841,8 @@ func makeFindings(
 			switch mapping.InternalPort {
 			case 554, 37777, 34567:
 				group.id = "forward_camera"
+			case 1433, 3306, 5432, 6379, 9200, 27017:
+				group.id = "forward_database"
 			}
 		}
 		if index, exists := groupIndexes[key]; exists {
@@ -849,8 +878,14 @@ func makeFindings(
 		switch finding.ID {
 		case "telnet_open", "ftp_open", "vnc_open", "adb_open", "new_device", "new_device_private":
 			finding.Message = i18n.T(lang, finding.ID, finding.Device)
-		case "port_forward", "port_forward_risky", "forward_camera":
+		case "port_forward", "port_forward_risky", "forward_camera", "forward_database":
 			finding.Message = i18n.T(lang, finding.ID, finding.Device, finding.Port)
+		}
+		if finding.ID == "vnc_noauth" {
+			finding.Message = i18n.T(lang, finding.ID, finding.Device)
+		}
+		if finding.ID == "adb_noauth" {
+			finding.Message = i18n.T(lang, finding.ID, finding.Device)
 		}
 	}
 	for i := range findings {
@@ -871,7 +906,7 @@ func riskyPortForward(mapping ssdp.PortMapping) bool {
 		return false
 	}
 	switch mapping.InternalPort {
-	case 21, 22, 23, 445, 554, 2323, 3389, 5555, 5900, 34567, 37777:
+	case 21, 22, 23, 135, 139, 445, 554, 2323, 2375, 3389, 5555, 5800, 5900, 1433, 3306, 5432, 6379, 9200, 27017, 34567, 37777:
 		return true
 	default:
 		return false
@@ -932,7 +967,9 @@ func renderText(writer io.Writer, result output, lang string, lastCheckDays ...*
 	fmt.Fprintln(writer, i18n.T(lang, "score", i18n.T(lang, result.Status), result.Score))
 	checkedItems := []string{
 		i18n.T(lang, "checked_devices", i18n.CheckedDeviceCount(lang, len(result.Devices))),
-		i18n.T(lang, "checked_ports"),
+	}
+	if result.Checks.Ports {
+		checkedItems = append(checkedItems, i18n.T(lang, "checked_ports"))
 	}
 	if result.Checks.PortForwards {
 		checkedItems = append(checkedItems, i18n.T(lang, "checked_forwards"))

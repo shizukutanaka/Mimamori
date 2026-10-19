@@ -32,10 +32,7 @@ func SweepHosts(prefixes []netip.Prefix, gateway netip.Addr) []netip.Addr {
 		subnet := originalSubnet
 		capped := subnet.Bits() < 24
 		if capped {
-			subnet = netip.PrefixFrom(prefix.Addr(), 24).Masked()
-			if !subnet.Contains(gateway) {
-				continue
-			}
+			subnet = netip.PrefixFrom(gateway, 24).Masked()
 		} else if subnet.Bits() > 30 {
 			continue
 		}
@@ -90,7 +87,7 @@ func LocalPrefixes() ([]netip.Prefix, error) {
 	var prefixes []netip.Prefix
 	var addressErrors []error
 	for _, iface := range interfaces {
-		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+		if !sweepableInterface(iface.Flags) {
 			continue
 		}
 		addresses, err := iface.Addrs()
@@ -133,4 +130,10 @@ func LocalPrefixes() ([]netip.Prefix, error) {
 		return prefixes[i].Bits() < prefixes[j].Bits()
 	})
 	return prefixes, errors.Join(addressErrors...)
+}
+
+// sweepableInterface reports whether iface is a broadcast LAN interface (Ethernet/Wi-Fi), not loopback or a VPN tunnel.
+func sweepableInterface(flags net.Flags) bool {
+	return flags&net.FlagUp != 0 && flags&net.FlagLoopback == 0 &&
+		flags&net.FlagBroadcast != 0 && flags&net.FlagPointToPoint == 0
 }
