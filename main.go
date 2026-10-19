@@ -253,6 +253,7 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 	opened := probe.Scan(ctx, scanTargets, []int{23, 2323, 21, 5900, 5555}, 700*time.Millisecond, 128)
 	neighbors := arp.neighbors
 	opened = markUnauthenticatedVNC(ctx, opened)
+	opened = markUnauthenticatedADB(ctx, opened)
 	if len(scanTargets) > len(initialHosts) {
 		refreshed, err := lan.ReadARP(ctx)
 		if err != nil {
@@ -787,6 +788,8 @@ func makeFindings(
 			findings = append(findings, report.Finding{ID: "vnc_noauth", Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name})
 		case 5555:
 			findings = append(findings, report.Finding{ID: "adb_open", Level: report.Caution, Points: 8, IP: item.IP.String(), Device: name})
+		case adbNoAuthPort:
+			findings = append(findings, report.Finding{ID: "adb_noauth", Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name})
 		}
 	}
 	for ip, findingID := range newDeviceFindings {
@@ -875,6 +878,9 @@ func makeFindings(
 			finding.Message = i18n.T(lang, finding.ID, finding.Device, finding.Port)
 		}
 		if finding.ID == "vnc_noauth" {
+			finding.Message = i18n.T(lang, finding.ID, finding.Device)
+		}
+		if finding.ID == "adb_noauth" {
 			finding.Message = i18n.T(lang, finding.ID, finding.Device)
 		}
 	}
