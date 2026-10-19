@@ -1,9 +1,150 @@
 package wifi
 
 import (
+	"encoding/binary"
 	"testing"
 	"unsafe"
 )
+
+type bssTestEntry struct {
+	bssid    [6]byte
+	elements []byte
+	ieOffset uint32
+	ieSize   uint32
+}
+
+func buildBSSList(t *testing.T, items uint32, entries []bssTestEntry) []byte {
+	t.Helper()
+	list := make([]byte, wlanBSSListEntriesOffset+len(entries)*wlanBSSEntrySize)
+	binary.LittleEndian.PutUint32(list[4:], items)
+	for i, entry := range entries {
+		start := wlanBSSListEntriesOffset + i*wlanBSSEntrySize
+		copy(list[start+wlanBSSEntryBSSIDOffset:], entry.bssid[:])
+		ieOffset := entry.ieOffset
+		if ieOffset == 0 {
+			ieOffset = uint32(len(list) - start)
+			list = append(list, entry.elements...)
+		}
+		ieSize := entry.ieSize
+		if ieSize == 0 {
+			ieSize = uint32(len(entry.elements))
+		}
+		binary.LittleEndian.PutUint32(list[start+wlanBSSEntryIEOffsetField:], ieOffset)
+		binary.LittleEndian.PutUint32(list[start+wlanBSSEntryIESizeField:], ieSize)
+	}
+	binary.LittleEndian.PutUint32(list[0:], uint32(len(list)))
+	return list
+}
+
+func TestBSSAdvertisesWPA1(t *testing.T) {
+	bssid := [6]byte{0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff}
+	otherBSSID := [6]byte{0x11, 0x22, 0x33, 0x44, 0x55, 0x66}
+	ssid := []byte("Family Wi-Fi")
+	ssidElement := append([]byte{informationElementSSID, byte(len(ssid))}, ssid...)
+	rsnElement := []byte{48, 2, 0x01, 0x00}
+	wpa1Element := []byte{221, 6, 0x00, 0x50, 0xF2, 0x01, 0x01, 0x00}
+	wmmElement := []byte{221, 6, 0x00, 0x50, 0xF2, 0x02, 0x01, 0x00}
+
+	concat := func(parts ...[]byte) []byte {
+		var all []byte
+		for _, part := range parts {
+			all = append(all, part...)
+		}
+		return all
+	}
+
+	tests := []struct {
+		name    string
+		items   uint32
+		entries []bssTestEntry
+		want    bool
+	}{
+		{
+			name:  "RSN and WPA1 elements",
+			items: 1,
+			entries: []bssTestEntry{
+				{bssid: bssid, elements: concat(ssidElement, rsnElement, wpa1Element)},
+			},
+			want: true,
+		},
+		{
+			name:  "RSN only",
+			items: 1,
+			entries: []bssTestEntry{
+				{bssid: bssid, elements: concat(ssidElement, rsnElement)},
+			},
+		},
+		{
+			name:  "WMM vendor element is not WPA1",
+			items: 1,
+			entries: []bssTestEntry{
+				{bssid: bssid, elements: concat(ssidElement, rsnElement, wmmElement)},
+			},
+		},
+		{
+			name:  "different BSSID",
+			items: 1,
+			entries: []bssTestEntry{
+				{bssid: otherBSSID, elements: concat(ssidElement, wpa1Element)},
+			},
+		},
+		{
+			name:  "different SSID element",
+			items: 1,
+			entries: []bssTestEntry{
+				{bssid: bssid, elements: concat([]byte{informationElementSSID, 5, 'O', 't', 'h', 'e', 'r'}, wpa1Element)},
+			},
+		},
+		{
+			name:  "no SSID element",
+			items: 1,
+			entries: []bssTestEntry{
+				{bssid: bssid, elements: concat(rsnElement, wpa1Element)},
+			},
+		},
+		{
+			name:  "truncated element",
+			items: 1,
+			entries: []bssTestEntry{
+				{bssid: bssid, elements: concat(ssidElement, wpa1Element, []byte{48, 40, 0x01})},
+			},
+		},
+		{
+			name:  "information elements past the buffer",
+			items: 1,
+			entries: []bssTestEntry{
+				{bssid: bssid, elements: concat(ssidElement, wpa1Element), ieOffset: wlanBSSEntrySize, ieSize: 4096},
+			},
+		},
+		{
+			name:  "second entry matches",
+			items: 2,
+			entries: []bssTestEntry{
+				{bssid: otherBSSID, elements: concat(ssidElement, rsnElement)},
+				{bssid: bssid, elements: concat(ssidElement, rsnElement, wpa1Element)},
+			},
+			want: true,
+		},
+		{
+			name:  "item count larger than the buffer",
+			items: 1000,
+			entries: []bssTestEntry{
+				{bssid: bssid, elements: concat(ssidElement, rsnElement)},
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			list := buildBSSList(t, test.items, test.entries)
+			if got := bssAdvertisesWPA1(list, bssid, ssid); got != test.want {
+				t.Fatalf("bssAdvertisesWPA1() = %t, want %t", got, test.want)
+			}
+		})
+	}
+	if bssAdvertisesWPA1(nil, bssid, ssid) {
+		t.Fatal("bssAdvertisesWPA1(nil) = true, want false")
+	}
+}
 
 func TestWLANSecurity(t *testing.T) {
 	tests := []struct {

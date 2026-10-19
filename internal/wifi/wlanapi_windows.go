@@ -12,11 +12,13 @@ func currentWLAN() (Security, bool, error) {
 	queryInterface := dll.NewProc("WlanQueryInterface")
 	freeMemory := dll.NewProc("WlanFreeMemory")
 	closeHandle := dll.NewProc("WlanCloseHandle")
+	getBSSList := dll.NewProc("WlanGetNetworkBssList")
 	for _, proc := range []*syscall.LazyProc{openHandle, enumInterfaces, queryInterface, freeMemory, closeHandle} {
 		if err := proc.Find(); err != nil {
 			return Unknown, false, nil
 		}
 	}
+	bssListAvailable := getBSSList.Find() == nil
 
 	var negotiatedVersion uint32
 	var handle syscall.Handle
@@ -87,6 +89,37 @@ func currentWLAN() (Security, bool, error) {
 		}
 
 		candidate := wlanSecurity(data.Security.AuthAlgorithm, data.Security.CipherAlgorithm)
+		if candidate == Modern && bssListAvailable {
+			var bssList *byte
+			result, _, _ = getBSSList.Call(
+				uintptr(handle),
+				uintptr(unsafe.Pointer(&iface.InterfaceGUID)),
+				uintptr(unsafe.Pointer(&data.Association.SSID)),
+				uintptr(data.Association.BSSType),
+				1,
+				0,
+				uintptr(unsafe.Pointer(&bssList)),
+			)
+			if result == 0 && bssList != nil {
+				total := *(*uint32)(unsafe.Pointer(bssList))
+				if total >= wlanBSSListEntriesOffset && total <= 1<<24 {
+					ssidLength := data.Association.SSID.Length
+					if ssidLength > 32 {
+						ssidLength = 32
+					}
+					if bssAdvertisesWPA1(
+						unsafe.Slice(bssList, total),
+						data.Association.BSSID,
+						data.Association.SSID.SSID[:ssidLength],
+					) {
+						candidate = WPA1orTKIP
+					}
+				}
+			}
+			if bssList != nil {
+				freeMemory.Call(uintptr(unsafe.Pointer(bssList)))
+			}
+		}
 		if securityRank(candidate) > securityRank(best) {
 			best = candidate
 		}

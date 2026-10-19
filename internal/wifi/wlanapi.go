@@ -1,5 +1,10 @@
 package wifi
 
+import (
+	"bytes"
+	"encoding/binary"
+)
+
 type wlanInterfaceInfo struct {
 	InterfaceGUID [16]byte
 	Description   [256]uint16
@@ -67,6 +72,76 @@ const (
 	dot11CipherAlgorithmCCMP256     uint32 = 0x0a
 	dot11CipherAlgorithmWEP         uint32 = 0x101
 )
+
+// WLAN_BSS_LIST is read by byte offset instead of a Go struct because MSVC
+// aligns its uint64 fields to 8 bytes while Go aligns them to 4 on windows/386.
+const (
+	wlanBSSListEntriesOffset  = 8
+	wlanBSSEntrySize          = 360
+	wlanBSSEntryBSSIDOffset   = 40
+	wlanBSSEntryIEOffsetField = 352
+	wlanBSSEntryIESizeField   = 356
+)
+
+var wpa1VendorPrefix = [4]byte{0x00, 0x50, 0xF2, 0x01}
+
+const (
+	informationElementSSID   = 0
+	informationElementVendor = 221
+)
+
+func bssAdvertisesWPA1(list []byte, bssid [6]byte, ssid []byte) bool {
+	if len(list) < wlanBSSListEntriesOffset+4 {
+		return false
+	}
+	items := uint64(binary.LittleEndian.Uint32(list[4:8]))
+	if capacity := uint64(len(list)-wlanBSSListEntriesOffset) / wlanBSSEntrySize; items > capacity {
+		items = capacity
+	}
+	for item := uint64(0); item < items; item++ {
+		entryStart := uint64(wlanBSSListEntriesOffset) + item*wlanBSSEntrySize
+		entry := list[entryStart : entryStart+wlanBSSEntrySize]
+		if !bytes.Equal(entry[wlanBSSEntryBSSIDOffset:wlanBSSEntryBSSIDOffset+6], bssid[:]) {
+			continue
+		}
+		ieOffset := uint64(binary.LittleEndian.Uint32(entry[wlanBSSEntryIEOffsetField:]))
+		ieSize := uint64(binary.LittleEndian.Uint32(entry[wlanBSSEntryIESizeField:]))
+		ieEnd := entryStart + ieOffset + ieSize
+		if ieEnd < entryStart || ieEnd > uint64(len(list)) {
+			continue
+		}
+		if advertisesWPA1(list[entryStart+ieOffset:ieEnd], ssid) {
+			return true
+		}
+	}
+	return false
+}
+
+func advertisesWPA1(elements, ssid []byte) bool {
+	ssidMatched := false
+	wpa1Found := false
+	for len(elements) > 0 {
+		if len(elements) < 2 {
+			return false
+		}
+		id, length := elements[0], int(elements[1])
+		if len(elements) < 2+length {
+			return false
+		}
+		body := elements[2 : 2+length]
+		switch {
+		case id == informationElementSSID:
+			if !bytes.Equal(body, ssid) {
+				return false
+			}
+			ssidMatched = true
+		case id == informationElementVendor && length >= 4 && bytes.Equal(body[:4], wpa1VendorPrefix[:]):
+			wpa1Found = true
+		}
+		elements = elements[2+length:]
+	}
+	return ssidMatched && wpa1Found
+}
 
 func reduceWLAN(best Security, failed bool) (Security, bool) {
 	if best != Unknown {
