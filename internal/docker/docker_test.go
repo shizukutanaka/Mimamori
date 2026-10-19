@@ -3,11 +3,13 @@ package docker
 import (
 	"context"
 	"crypto/tls"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
-	"sync/atomic"
+	"reflect"
+	"sync"
 	"testing"
 	"time"
 )
@@ -43,38 +45,111 @@ func TestParseVersion(t *testing.T) {
 
 func TestUnauthenticated(t *testing.T) {
 	tests := []struct {
-		name     string
-		status   int
-		body     string
-		location string
-		want     bool
+		name          string
+		versionStatus int
+		versionBody   string
+		optionsStatus int
+		optionsBody   string
+		location      string
+		want          bool
+		wantRequests  []string
 	}{
-		{name: "unauthenticated Docker version", status: http.StatusOK, body: modernVersion, want: true},
-		{name: "authentication required", status: http.StatusUnauthorized, body: `{"message":"Unauthorized"}`},
-		{name: "non-Docker JSON", status: http.StatusOK, body: `{"version":"27.5.1"}`},
-		{name: "redirect", status: http.StatusFound, body: `<html>Redirecting</html>`, location: "/login"},
+		{
+			name:          "write request forbidden",
+			versionStatus: http.StatusOK,
+			versionBody:   modernVersion,
+			optionsStatus: http.StatusForbidden,
+			optionsBody:   `{"message":"Forbidden"}`,
+			wantRequests:  []string{"GET /version", "OPTIONS /containers/create"},
+		},
+		{
+			name:          "write request requires authentication",
+			versionStatus: http.StatusOK,
+			versionBody:   modernVersion,
+			optionsStatus: http.StatusUnauthorized,
+			optionsBody:   `{"message":"Unauthorized"}`,
+			wantRequests:  []string{"GET /version", "OPTIONS /containers/create"},
+		},
+		{
+			name:          "write request returns Docker not found",
+			versionStatus: http.StatusOK,
+			versionBody:   modernVersion,
+			optionsStatus: http.StatusNotFound,
+			optionsBody:   `{"message":"page not found"}`,
+			want:          true,
+			wantRequests:  []string{"GET /version", "OPTIONS /containers/create"},
+		},
+		{
+			name:          "write request method is not allowed",
+			versionStatus: http.StatusOK,
+			versionBody:   modernVersion,
+			optionsStatus: http.StatusMethodNotAllowed,
+			optionsBody:   `{"message":"method not allowed"}`,
+			want:          true,
+			wantRequests:  []string{"GET /version", "OPTIONS /containers/create"},
+		},
+		{
+			name:          "write request redirect is not followed",
+			versionStatus: http.StatusOK,
+			versionBody:   modernVersion,
+			optionsStatus: http.StatusFound,
+			optionsBody:   `<html>Redirecting</html>`,
+			location:      "/redirect-target",
+			want:          true,
+			wantRequests:  []string{"GET /version", "OPTIONS /containers/create"},
+		},
+		{
+			name:          "non-Docker JSON does not send a second request",
+			versionStatus: http.StatusOK,
+			versionBody:   `{"version":"27.5.1"}`,
+			wantRequests:  []string{"GET /version"},
+		},
+		{
+			name:          "version not found does not send a second request",
+			versionStatus: http.StatusNotFound,
+			versionBody:   `{"message":"page not found"}`,
+			wantRequests:  []string{"GET /version"},
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			var requests atomic.Int32
+			var mu sync.Mutex
+			var requests []string
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
-				requests.Add(1)
-				if request.Method != http.MethodGet || request.URL.Path != "/version" {
-					t.Errorf("request = %s %s, want GET /version", request.Method, request.URL.Path)
+				requestBody, err := io.ReadAll(request.Body)
+				if err != nil {
+					t.Errorf("read request body: %v", err)
 				}
-				if test.location != "" {
-					w.Header().Set("Location", test.location)
+				if len(requestBody) != 0 {
+					t.Errorf("request body = %q, want empty", requestBody)
 				}
-				w.WriteHeader(test.status)
-				_, _ = w.Write([]byte(test.body))
+				mu.Lock()
+				requests = append(requests, request.Method+" "+request.URL.Path)
+				mu.Unlock()
+				switch request.URL.Path {
+				case "/version":
+					w.WriteHeader(test.versionStatus)
+					_, _ = w.Write([]byte(test.versionBody))
+				case "/containers/create":
+					if test.location != "" {
+						w.Header().Set("Location", test.location)
+					}
+					w.WriteHeader(test.optionsStatus)
+					_, _ = w.Write([]byte(test.optionsBody))
+				default:
+					w.WriteHeader(http.StatusOK)
+				}
 			}))
 			defer server.Close()
 			port := server.Listener.Addr().(*net.TCPAddr).Port
 			if got := Unauthenticated(context.Background(), netip.MustParseAddr("127.0.0.1"), port, time.Second); got != test.want {
 				t.Fatalf("Unauthenticated() = %t, want %t", got, test.want)
 			}
-			if got := requests.Load(); got != 1 {
-				t.Fatalf("request count = %d, want exactly one", got)
+			mu.Lock()
+			gotRequests := append([]string(nil), requests...)
+			mu.Unlock()
+			if !reflect.DeepEqual(gotRequests, test.wantRequests) {
+				t.Fatalf("requests = %v, want %v", gotRequests, test.wantRequests)
 			}
 		})
 	}
@@ -82,38 +157,101 @@ func TestUnauthenticated(t *testing.T) {
 
 func TestUnauthenticatedTLS(t *testing.T) {
 	tests := []struct {
-		name     string
-		status   int
-		body     string
-		location string
-		want     bool
+		name          string
+		versionStatus int
+		versionBody   string
+		optionsStatus int
+		optionsBody   string
+		location      string
+		want          bool
+		wantRequests  []string
 	}{
-		{name: "unauthenticated Docker version over TLS", status: http.StatusOK, body: modernVersion, want: true},
-		{name: "authentication required", status: http.StatusUnauthorized, body: `{"message":"Unauthorized"}`},
-		{name: "non-Docker JSON", status: http.StatusOK, body: `{"version":"27.5.1"}`},
-		{name: "redirect", status: http.StatusFound, body: `<html>Redirecting</html>`, location: "/login"},
+		{
+			name:          "write request forbidden",
+			versionStatus: http.StatusOK,
+			versionBody:   modernVersion,
+			optionsStatus: http.StatusForbidden,
+			optionsBody:   `{"message":"Forbidden"}`,
+			wantRequests:  []string{"GET /version", "OPTIONS /containers/create"},
+		},
+		{
+			name:          "write request returns Docker not found",
+			versionStatus: http.StatusOK,
+			versionBody:   modernVersion,
+			optionsStatus: http.StatusNotFound,
+			optionsBody:   `{"message":"page not found"}`,
+			want:          true,
+			wantRequests:  []string{"GET /version", "OPTIONS /containers/create"},
+		},
+		{
+			name:          "write request redirect is not followed",
+			versionStatus: http.StatusOK,
+			versionBody:   modernVersion,
+			optionsStatus: http.StatusFound,
+			optionsBody:   `<html>Redirecting</html>`,
+			location:      "/redirect-target",
+			want:          true,
+			wantRequests:  []string{"GET /version", "OPTIONS /containers/create"},
+		},
+		{
+			name:          "authentication required",
+			versionStatus: http.StatusUnauthorized,
+			versionBody:   `{"message":"Unauthorized"}`,
+			wantRequests:  []string{"GET /version"},
+		},
+		{
+			name:          "non-Docker JSON",
+			versionStatus: http.StatusOK,
+			versionBody:   `{"version":"27.5.1"}`,
+			wantRequests:  []string{"GET /version"},
+		},
+		{
+			name:          "version redirect is not followed",
+			versionStatus: http.StatusFound,
+			versionBody:   `<html>Redirecting</html>`,
+			location:      "/login",
+			wantRequests:  []string{"GET /version"},
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			var requests atomic.Int32
+			var mu sync.Mutex
+			var requests []string
 			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
-				requests.Add(1)
-				if request.Method != http.MethodGet || request.URL.Path != "/version" {
-					t.Errorf("request = %s %s, want GET /version", request.Method, request.URL.Path)
+				requestBody, err := io.ReadAll(request.Body)
+				if err != nil {
+					t.Errorf("read request body: %v", err)
 				}
+				if len(requestBody) != 0 {
+					t.Errorf("request body = %q, want empty", requestBody)
+				}
+				mu.Lock()
+				requests = append(requests, request.Method+" "+request.URL.Path)
+				mu.Unlock()
 				if test.location != "" {
 					w.Header().Set("Location", test.location)
 				}
-				w.WriteHeader(test.status)
-				_, _ = w.Write([]byte(test.body))
+				switch request.URL.Path {
+				case "/version":
+					w.WriteHeader(test.versionStatus)
+					_, _ = w.Write([]byte(test.versionBody))
+				case "/containers/create":
+					w.WriteHeader(test.optionsStatus)
+					_, _ = w.Write([]byte(test.optionsBody))
+				default:
+					w.WriteHeader(http.StatusOK)
+				}
 			}))
 			defer server.Close()
 			port := server.Listener.Addr().(*net.TCPAddr).Port
 			if got := UnauthenticatedTLS(context.Background(), netip.MustParseAddr("127.0.0.1"), port, time.Second); got != test.want {
 				t.Fatalf("UnauthenticatedTLS() = %t, want %t", got, test.want)
 			}
-			if got := requests.Load(); got != 1 {
-				t.Fatalf("request count = %d, want exactly one", got)
+			mu.Lock()
+			gotRequests := append([]string(nil), requests...)
+			mu.Unlock()
+			if !reflect.DeepEqual(gotRequests, test.wantRequests) {
+				t.Fatalf("requests = %v, want %v", gotRequests, test.wantRequests)
 			}
 		})
 	}

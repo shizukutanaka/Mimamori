@@ -62,10 +62,27 @@ func probeVersion(ctx context.Context, ip netip.Addr, port int, timeout time.Dur
 	if err != nil {
 		return false
 	}
-	defer response.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(response.Body, maxResponseBytes))
+	response.Body.Close()
 	if err != nil {
 		return false
 	}
-	return response.StatusCode == http.StatusOK && ParseVersion(body)
+	if response.StatusCode != http.StatusOK || !ParseVersion(body) {
+		return false
+	}
+
+	request, err = http.NewRequestWithContext(ctx, http.MethodOptions, scheme+"://"+address+"/containers/create", nil)
+	if err != nil {
+		return false
+	}
+	response, err = client.Do(request)
+	if err != nil {
+		return false
+	}
+	_, readErr := io.Copy(io.Discard, response.Body)
+	closeErr := response.Body.Close()
+	if readErr != nil || closeErr != nil {
+		return false
+	}
+	return response.StatusCode != http.StatusUnauthorized && response.StatusCode != http.StatusForbidden
 }

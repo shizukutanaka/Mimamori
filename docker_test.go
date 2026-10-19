@@ -44,13 +44,24 @@ func TestMarkUnauthenticatedDocker(t *testing.T) {
 					t.Fatalf("markUnauthenticatedDocker() returned %v, want %v", got, want)
 				}
 			}
+			wantRequests := []string{"GET /version"}
+			if test.want {
+				wantRequests = append(wantRequests, "OPTIONS /containers/create")
+			}
+			for _, wantRequest := range wantRequests {
+				select {
+				case request := <-requests:
+					if request != wantRequest {
+						t.Fatalf("request = %q, want %q", request, wantRequest)
+					}
+				case <-time.After(time.Second):
+					t.Fatalf("Docker fake server received no request; want %q", wantRequest)
+				}
+			}
 			select {
 			case request := <-requests:
-				if request != "GET /version" {
-					t.Fatalf("request = %q, want GET /version", request)
-				}
-			case <-time.After(time.Second):
-				t.Fatal("Docker fake server received no request")
+				t.Fatalf("Docker fake server received unexpected request %q", request)
+			default:
 			}
 		})
 	}
@@ -85,13 +96,20 @@ func TestMarkUnauthenticatedDockerTLS(t *testing.T) {
 				}
 			}
 			if test.want {
+				for _, wantRequest := range []string{"GET /version", "OPTIONS /containers/create"} {
+					select {
+					case request := <-requests:
+						if request != wantRequest {
+							t.Fatalf("request = %q, want %q", request, wantRequest)
+						}
+					case <-time.After(time.Second):
+						t.Fatalf("TLS Docker fake server received no request; want %q", wantRequest)
+					}
+				}
 				select {
 				case request := <-requests:
-					if request != "GET /version" {
-						t.Fatalf("request = %q, want GET /version", request)
-					}
-				case <-time.After(time.Second):
-					t.Fatal("TLS Docker fake server received no request")
+					t.Fatalf("TLS Docker fake server received unexpected request %q", request)
+				default:
 				}
 			} else {
 				select {
@@ -111,11 +129,19 @@ func startDockerTestServer(t *testing.T, status int, body string) (probe.Open, <
 	if err != nil {
 		t.Skipf("cannot listen on %s:2375: %v", address, err)
 	}
-	requests := make(chan string, 1)
+	requests := make(chan string, 2)
 	server := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		requests <- request.Method + " " + request.URL.Path
-		w.WriteHeader(status)
-		_, _ = w.Write([]byte(body))
+		switch request.URL.Path {
+		case "/version":
+			w.WriteHeader(status)
+			_, _ = w.Write([]byte(body))
+		case "/containers/create":
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"message":"page not found"}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
 	})}
 	done := make(chan struct{})
 	go func() {
@@ -140,11 +166,19 @@ func startDockerTLSTestServer(t *testing.T, requireClientCertificate bool, body 
 	if err != nil {
 		t.Skipf("cannot listen on %s:2376: %v", address, err)
 	}
-	requests := make(chan string, 1)
+	requests := make(chan string, 2)
 	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		requests <- request.Method + " " + request.URL.Path
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(body))
+		switch request.URL.Path {
+		case "/version":
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(body))
+		case "/containers/create":
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"message":"page not found"}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
 	}))
 	if err := server.Listener.Close(); err != nil {
 		_ = listener.Close()
