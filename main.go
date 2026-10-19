@@ -227,7 +227,7 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 	}
 
 	httpClient := newUPnPHTTPClient()
-	descriptions, descriptionErrors := fetchDescriptions(ctx, httpClient, discovery.responses)
+	descriptions, descriptionErrors := fetchDescriptions(ctx, httpClient, discovery.responses, gatewayIP)
 	for _, err := range descriptionErrors {
 		fmt.Fprintf(stderr, "warning: cannot read a device description: %s\n", stripUnsafeRunes(err.Error()))
 	}
@@ -652,7 +652,12 @@ func fetchPortMappings(
 	return mappings, true, errors.Join(errs...)
 }
 
-func fetchDescriptions(ctx context.Context, client *http.Client, responses []ssdp.Response) (map[netip.Addr]ssdp.Description, []error) {
+var descriptionFetchBudget = 5 * time.Second
+
+func fetchDescriptions(ctx context.Context, client *http.Client, responses []ssdp.Response, gateway netip.Addr) (map[netip.Addr]ssdp.Description, []error) {
+	ctx, cancel := context.WithTimeout(ctx, descriptionFetchBudget)
+	defer cancel()
+
 	selected := make(map[netip.Addr]ssdp.Response)
 	for _, response := range responses {
 		if !ssdp.AllowedLocation(response.Location, response.IP) {
@@ -668,6 +673,22 @@ func fetchDescriptions(ctx context.Context, client *http.Client, responses []ssd
 		ip       netip.Addr
 		location string
 	}
+	ordered := make([]request, 0, len(selected))
+	for ip, response := range selected {
+		ordered = append(ordered, request{ip: ip, location: response.Location})
+	}
+	sort.Slice(ordered, func(i, j int) bool {
+		return ordered[i].ip.Less(ordered[j].ip)
+	})
+	for i := range ordered {
+		if ordered[i].ip == gateway && i > 0 {
+			gatewayRequest := ordered[i]
+			copy(ordered[1:i+1], ordered[:i])
+			ordered[0] = gatewayRequest
+			break
+		}
+	}
+
 	requests := make(chan request)
 	results := make(chan descriptionResult)
 	var workers sync.WaitGroup
@@ -685,9 +706,20 @@ func fetchDescriptions(ctx context.Context, client *http.Client, responses []ssd
 			}
 		}()
 	}
+	skipped := 0
 	go func() {
-		for ip, response := range selected {
-			requests <- request{ip: ip, location: response.Location}
+	feed:
+		for index, item := range ordered {
+			if ctx.Err() != nil {
+				skipped = len(ordered) - index
+				break
+			}
+			select {
+			case requests <- item:
+			case <-ctx.Done():
+				skipped = len(ordered) - index
+				break feed
+			}
 		}
 		close(requests)
 		workers.Wait()
@@ -702,6 +734,9 @@ func fetchDescriptions(ctx context.Context, client *http.Client, responses []ssd
 			continue
 		}
 		devices[result.ip] = result.device
+	}
+	if skipped > 0 {
+		errs = append(errs, fmt.Errorf("description fetch time limit reached; %d devices not read", skipped))
 	}
 	return devices, errs
 }

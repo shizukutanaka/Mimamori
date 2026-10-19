@@ -13,6 +13,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 	"unicode"
 
 	"github.com/shizukutanaka/Mimamori/internal/baseline"
@@ -632,6 +633,66 @@ type roundTripperFunc func(*http.Request) (*http.Response, error)
 
 func (roundTripper roundTripperFunc) RoundTrip(request *http.Request) (*http.Response, error) {
 	return roundTripper(request)
+}
+
+func TestFetchDescriptionsBoundsSpoofedFlood(t *testing.T) {
+	previousBudget := descriptionFetchBudget
+	descriptionFetchBudget = 200 * time.Millisecond
+	t.Cleanup(func() {
+		descriptionFetchBudget = previousBudget
+	})
+
+	gateway := netip.MustParseAddr("192.168.1.1")
+	responses := make([]ssdp.Response, 0, 65)
+	for host := 100; host <= 163; host++ {
+		ip := netip.MustParseAddr(fmt.Sprintf("192.168.1.%d", host))
+		responses = append(responses, ssdp.Response{
+			IP:       ip,
+			ST:       "upnp:rootdevice",
+			Location: fmt.Sprintf("http://%s:49152/d.xml", ip),
+		})
+	}
+	responses = append(responses, ssdp.Response{
+		IP:       gateway,
+		ST:       "upnp:rootdevice",
+		Location: fmt.Sprintf("http://%s:49152/d.xml", gateway),
+	})
+
+	client := &http.Client{
+		Timeout: 2 * time.Second,
+		Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
+			if request.URL.Hostname() == gateway.String() {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     make(http.Header),
+					Body: io.NopCloser(strings.NewReader(`<root><device>
+<deviceType>urn:schemas-upnp-org:device:InternetGatewayDevice:1</deviceType>
+<friendlyName>Home Router</friendlyName></device></root>`)),
+				}, nil
+			}
+			<-request.Context().Done()
+			return nil, request.Context().Err()
+		}),
+	}
+
+	start := time.Now()
+	devices, errs := fetchDescriptions(context.Background(), client, responses, gateway)
+	elapsed := time.Since(start)
+	if elapsed >= 2*time.Second {
+		t.Fatalf("fetchDescriptions() took %s, want under 2s", elapsed)
+	}
+	if _, ok := devices[gateway]; !ok {
+		t.Fatal("gateway description is missing")
+	}
+	if len(errs) > 9 {
+		t.Fatalf("fetchDescriptions() returned %d errors, want at most 9", len(errs))
+	}
+	for _, err := range errs {
+		if strings.Contains(err.Error(), "time limit reached") {
+			return
+		}
+	}
+	t.Fatal("fetchDescriptions() errors do not contain the time limit summary")
 }
 
 func TestRouterUPnPAttribution(t *testing.T) {
