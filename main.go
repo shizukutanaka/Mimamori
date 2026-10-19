@@ -250,7 +250,8 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 		}
 		scanTargets = mergeHosts(initialHosts, lan.SweepHosts(prefixes, gatewayIP))
 	}
-	opened := probe.Scan(ctx, scanTargets, []int{23, 2323, 21, 5900, 5555}, 700*time.Millisecond, 128)
+	opened := probe.Scan(ctx, scanTargets, []int{23, 2323, 21, 5900, 5555, 1883}, 700*time.Millisecond, 128)
+	opened = markUnauthenticatedMQTT(ctx, opened)
 	neighbors := arp.neighbors
 	opened = markUnauthenticatedVNC(ctx, opened)
 	opened = markUnauthenticatedADB(ctx, opened)
@@ -775,6 +776,8 @@ func makeFindings(
 	for _, item := range opened {
 		name := deviceNames[item.IP]
 		switch item.Port {
+		case 1883:
+			findings = append(findings, report.Finding{ID: "mqtt_anonymous", Level: report.Caution, Points: 8, IP: item.IP.String(), Device: name})
 		case 23, 2323:
 			if _, exists := telnetSeen[item.IP]; exists {
 				continue
@@ -872,6 +875,9 @@ func makeFindings(
 		finding := &findings[i]
 		finding.Message = i18n.T(lang, finding.ID)
 		finding.Fix = i18n.T(lang, finding.ID+"_fix")
+		if finding.ID == "mqtt_anonymous" {
+			finding.Message = i18n.T(lang, finding.ID, finding.Device)
+		}
 		switch finding.ID {
 		case "telnet_open", "ftp_open", "vnc_open", "adb_open", "new_device", "new_device_private":
 			finding.Message = i18n.T(lang, finding.ID, finding.Device)
