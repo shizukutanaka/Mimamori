@@ -210,7 +210,6 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 	arp := <-arpCh
 	gateway := <-gatewayCh
 	discovery := <-ssdpCh
-	wifiCheck := <-wifiCh
 	if arp.err != nil {
 		fmt.Fprintf(stderr, "warning: cannot read the neighbor table: %v\n", arp.err)
 	}
@@ -223,23 +222,28 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 	if discovery.err != nil {
 		fmt.Fprintf(stderr, "warning: UPnP discovery failed: %v\n", discovery.err)
 	}
-	if wifiCheck.err != nil {
-		fmt.Fprintf(stderr, "warning: cannot determine Wi-Fi security: %v\n", wifiCheck.err)
-	}
 
 	discovery.responses = withoutLocalResponses(discovery.responses, lan.LocalAddresses())
 	httpClient := newUPnPHTTPClient()
-	descriptions, descriptionErrors := fetchDescriptions(ctx, httpClient, discovery.responses, gatewayIP)
-	for _, err := range descriptionErrors {
-		fmt.Fprintf(stderr, "warning: cannot read a device description: %s\n", stripUnsafeRunes(err.Error()))
+	type upnpFetchResult struct {
+		descriptions        map[netip.Addr]ssdp.Description
+		descriptionErrors   []error
+		portMappings        []ssdp.PortMapping
+		portMappingQueryRan bool
+		portMappingErr      error
 	}
-	incomplete = arp.err != nil || gateway.err != nil || discovery.err != nil || wifiCheck.err != nil || len(descriptionErrors) > 0
-	wifiFs := wifiFindings(wifiCheck.security, lang)
-	portMappings, portMappingQueryRan, portMappingErr := fetchPortMappings(ctx, httpClient, gatewayIP, discovery.responses, descriptions)
-	if portMappingErr != nil {
-		fmt.Fprintf(stderr, "warning: cannot read the router's port forwarding list: %s\n", portMappingWarning(portMappingErr))
-		incomplete = true
-	}
+	upnpCh := make(chan upnpFetchResult, 1)
+	go func() {
+		descriptions, descriptionErrors := fetchDescriptions(ctx, httpClient, discovery.responses, gatewayIP)
+		portMappings, portMappingQueryRan, portMappingErr := fetchPortMappings(ctx, httpClient, gatewayIP, discovery.responses, descriptions)
+		upnpCh <- upnpFetchResult{
+			descriptions:        descriptions,
+			descriptionErrors:   descriptionErrors,
+			portMappings:        portMappings,
+			portMappingQueryRan: portMappingQueryRan,
+			portMappingErr:      portMappingErr,
+		}
+	}()
 
 	var prefixes []netip.Prefix
 	prefixesFailed := false
@@ -285,6 +289,25 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 			neighbors = mergeNeighbors(neighbors, refreshed)
 		}
 	}
+	wifiCheck := <-wifiCh
+	if wifiCheck.err != nil {
+		fmt.Fprintf(stderr, "warning: cannot determine Wi-Fi security: %v\n", wifiCheck.err)
+	}
+	upnp := <-upnpCh
+	descriptions := upnp.descriptions
+	descriptionErrors := upnp.descriptionErrors
+	portMappings := upnp.portMappings
+	portMappingQueryRan := upnp.portMappingQueryRan
+	portMappingErr := upnp.portMappingErr
+	for _, err := range descriptionErrors {
+		fmt.Fprintf(stderr, "warning: cannot read a device description: %s\n", stripUnsafeRunes(err.Error()))
+	}
+	incomplete = incomplete || arp.err != nil || gateway.err != nil || discovery.err != nil || wifiCheck.err != nil || len(descriptionErrors) > 0
+	if portMappingErr != nil {
+		fmt.Fprintf(stderr, "warning: cannot read the router's port forwarding list: %s\n", portMappingWarning(portMappingErr))
+		incomplete = true
+	}
+	wifiFs := wifiFindings(wifiCheck.security, lang)
 	canReport, forceIncomplete := reportable(scanObservedNetwork(neighbors, discovery.responses, opened), wifiFs)
 	if forceIncomplete {
 		incomplete = true
