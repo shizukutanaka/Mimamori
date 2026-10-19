@@ -10,6 +10,8 @@ import (
 	"io"
 	"net/http"
 	"net/netip"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -31,22 +33,72 @@ func TestExitCode(t *testing.T) {
 	tests := []struct {
 		name              string
 		findings          []report.Finding
+		loadState         historyLoadState
 		historySaveFailed bool
 		want              int
 	}{
-		{name: "danger and history save failed", findings: []report.Finding{danger}, historySaveFailed: true, want: 2},
-		{name: "caution and history save failed", findings: []report.Finding{caution}, historySaveFailed: true, want: 1},
-		{name: "danger and history saved", findings: []report.Finding{danger}, want: 2},
-		{name: "caution and history saved", findings: []report.Finding{caution}, want: 0},
-		{name: "no findings and history saved", want: 0},
+		{name: "danger and history save failed", findings: []report.Finding{danger}, loadState: historyLoadReady, historySaveFailed: true, want: 2},
+		{name: "caution and history save failed", findings: []report.Finding{caution}, loadState: historyLoadReady, historySaveFailed: true, want: 1},
+		{name: "danger and history saved", findings: []report.Finding{danger}, loadState: historyLoadReady, want: 2},
+		{name: "caution and history saved", findings: []report.Finding{caution}, loadState: historyLoadReady, want: 0},
+		{name: "no findings and history saved", loadState: historyLoadReady, want: 0},
+		{name: "caution and history unreadable", findings: []report.Finding{caution}, loadState: historyLoadUnavailable, want: 1},
+		{name: "no findings and history unreadable", loadState: historyLoadUnavailable, want: 1},
+		{name: "danger and history unreadable", findings: []report.Finding{danger}, loadState: historyLoadUnavailable, want: 2},
+		{name: "quarantined history", loadState: historyLoadQuarantined, want: 0},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := exitCode(test.findings, test.historySaveFailed); got != test.want {
+			if got := exitCode(test.findings, test.loadState, test.historySaveFailed); got != test.want {
 				t.Fatalf("exitCode() = %d, want %d", got, test.want)
 			}
 		})
 	}
+}
+
+func TestLoadHistoryPathError(t *testing.T) {
+	t.Run("returns path error without creating a file", func(t *testing.T) {
+		tempDir := t.TempDir()
+		workingDir, err := os.Getwd()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chdir(tempDir); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if err := os.Chdir(workingDir); err != nil {
+				t.Errorf("restore working directory: %v", err)
+			}
+		})
+
+		wantErr := errors.New("no home")
+		_, existed, err := loadHistory("", wantErr)
+		if err != wantErr {
+			t.Fatalf("loadHistory() error = %v, want %v", err, wantErr)
+		}
+		if existed {
+			t.Fatal("loadHistory() reported history exists, want false")
+		}
+		entries, err := os.ReadDir(tempDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(entries) != 0 {
+			t.Fatalf("working directory contains files: %v", entries)
+		}
+	})
+
+	t.Run("missing file", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "missing.json")
+		_, existed, err := loadHistory(path, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if existed {
+			t.Fatal("loadHistory() reported history exists, want false")
+		}
+	})
 }
 
 func TestMakeFindings(t *testing.T) {

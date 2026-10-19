@@ -168,12 +168,11 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 		fmt.Fprintln(stderr, i18n.T(pre, "wait_negative"))
 		return earlyRunResult(1, pre, *jsonOutput)
 	}
+	var statePathErr error
 	if *statePath == "" {
-		var err error
-		*statePath, err = baseline.DefaultPath()
-		if err != nil {
-			fmt.Fprintf(stderr, "warning: cannot determine state path: %v\n", err)
-			return finish(1)
+		*statePath, statePathErr = baseline.DefaultPath()
+		if statePathErr != nil {
+			fmt.Fprintf(stderr, "warning: cannot determine state path: %v\n", statePathErr)
 		}
 	}
 
@@ -288,7 +287,7 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 	}
 	neighbors = homeNeighbors(neighbors, prefixes, gatewayIP)
 
-	store, existed, err := baseline.Load(*statePath)
+	store, existed, err := loadHistory(*statePath, statePathErr)
 	firstRun := !existed
 	loadState := historyLoadReady
 	if err != nil {
@@ -381,23 +380,30 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 		store.Prune(now, 30*24*time.Hour, lan.IsRandomizedMAC)
 		if err := baseline.Save(*statePath, store); err != nil {
 			fmt.Fprintf(stderr, "warning: cannot save device history: %v\n", err)
-			return finish(exitCode(findings, true))
+			return finish(exitCode(findings, loadState, true))
 		}
 	}
 
-	return finish(exitCode(findings, false))
+	return finish(exitCode(findings, loadState, false))
 }
 
-func exitCode(findings []report.Finding, historySaveFailed bool) int {
+func exitCode(findings []report.Finding, loadState historyLoadState, historySaveFailed bool) int {
 	for _, finding := range findings {
 		if finding.Level == report.Danger {
 			return 2
 		}
 	}
-	if historySaveFailed {
+	if historySaveFailed || loadState == historyLoadUnavailable {
 		return 1
 	}
 	return 0
+}
+
+func loadHistory(path string, pathErr error) (baseline.Store, bool, error) {
+	if pathErr != nil {
+		return baseline.Store{}, false, pathErr
+	}
+	return baseline.Load(path)
 }
 
 func printNoDeviceError(writer io.Writer, lang string, wifiErr error) {
