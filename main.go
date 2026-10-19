@@ -250,7 +250,7 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 		}
 		scanTargets = mergeHosts(initialHosts, lan.SweepHosts(prefixes, gatewayIP))
 	}
-	opened := probe.Scan(ctx, scanTargets, []int{23, 2323, 21, 5900, 5555, 554, 1883}, 700*time.Millisecond, 128)
+	opened := markSMB1(ctx, probe.Scan(ctx, scanTargets, []int{23, 2323, 21, 5900, 5555, 445, 554, 1883}, 700*time.Millisecond, 128))
 	opened = markUnauthenticatedRTSP(ctx, opened)
 	opened = markUnauthenticatedMQTT(ctx, opened)
 	neighbors := arp.neighbors
@@ -777,6 +777,8 @@ func makeFindings(
 	for _, item := range opened {
 		name := deviceNames[item.IP]
 		switch item.Port {
+		case smb1Port:
+			findings = append(findings, report.Finding{ID: "smb1_enabled", Level: report.Caution, Points: 8, IP: item.IP.String(), Device: name})
 		case 1883:
 			findings = append(findings, report.Finding{ID: "mqtt_anonymous", Level: report.Caution, Points: 8, IP: item.IP.String(), Device: name})
 		case 23, 2323:
@@ -886,6 +888,8 @@ func makeFindings(
 			finding.Message = i18n.T(lang, finding.ID, finding.Device)
 		case "port_forward", "port_forward_risky", "forward_camera", "forward_database":
 			finding.Message = i18n.T(lang, finding.ID, finding.Device, finding.Port)
+		case "smb1_enabled":
+			finding.Message = i18n.T(lang, finding.ID, finding.Device)
 		}
 		if finding.ID == "vnc_noauth" {
 			finding.Message = i18n.T(lang, finding.ID, finding.Device)
