@@ -98,11 +98,7 @@ func unauthenticated(ctx context.Context, ip netip.Addr, port, httpsPort int, ti
 	if err != nil || redirectIP != ip {
 		return false
 	}
-	if httpsPort == 443 {
-		if location.Port() != "" {
-			return false
-		}
-	} else if location.Port() != strconv.Itoa(httpsPort) {
+	if !redirectPortMatches(location.Port(), httpsPort) {
 		return false
 	}
 
@@ -144,6 +140,13 @@ func isHTTPSRedirect(status int) bool {
 	default:
 		return false
 	}
+}
+
+func redirectPortMatches(locationPort string, httpsPort int) bool {
+	if httpsPort == 443 {
+		return locationPort == "" || locationPort == "443"
+	}
+	return locationPort == strconv.Itoa(httpsPort)
 }
 
 func parseResponse(response *http.Response) bool {
