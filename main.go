@@ -1017,7 +1017,7 @@ func riskyPortForward(mapping ssdp.PortMapping) bool {
 		return false
 	}
 	switch mapping.InternalPort {
-	case 21, 22, 23, 135, 139, 445, 554, 8554, 1883, 2323, 2375, 3389, 5555, 5800, 5900, 1433, 3306, 5432, 6379, 9200, 27017, 34567, 37777:
+	case 21, 22, 23, 135, 139, 445, 554, 8554, 1883, 1984, 2323, 2375, 3389, 5555, 5800, 5900, 1433, 3306, 5432, 6379, 9200, 27017, 34567, 37777:
 		return true
 	default:
 		return false
