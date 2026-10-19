@@ -181,6 +181,7 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 	ctx := context.Background()
 	arpCh := make(chan discoveryResult, 1)
 	gatewayCh := make(chan gatewayResult, 1)
+	unicastCh := make(chan netip.Addr, 1)
 	ssdpCh := make(chan ssdpResult, 1)
 	wifiCh := make(chan wifiResult, 1)
 	go func() {
@@ -189,13 +190,14 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 	}()
 	go func() {
 		gateway, err := lan.DefaultGateway(ctx)
-		gatewayCh <- gatewayResult{gateway: gateway, err: err}
-		var responses []ssdp.Response
-		if err != nil {
-			responses, err = ssdp.Discover(ctx, *wait)
-		} else {
-			responses, err = ssdp.Discover(ctx, *wait, gateway)
+		if err == nil {
+			unicastCh <- gateway
 		}
+		close(unicastCh)
+		gatewayCh <- gatewayResult{gateway: gateway, err: err}
+	}()
+	go func() {
+		responses, err := ssdp.Discover(ctx, *wait, unicastCh)
 		ssdpCh <- ssdpResult{responses: responses, err: err}
 	}()
 	go func() {

@@ -121,6 +121,163 @@ func TestDiscoverUnicastSearchMessage(t *testing.T) {
 	}
 }
 
+func TestDiscoverDelayedUnicast(t *testing.T) {
+	target, _, _ := startSSDPTestResponder(t, func(int, []byte) bool { return true })
+	unicast := make(chan *net.UDPAddr)
+	go func() {
+		time.Sleep(150 * time.Millisecond)
+		unicast <- target
+		close(unicast)
+	}()
+
+	responses, err := discoverTargets(
+		context.Background(),
+		400*time.Millisecond,
+		nil,
+		unicast,
+		netip.Addr.IsLoopback,
+		20*time.Millisecond,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(responses) != 1 {
+		t.Fatalf("discoverTargets() returned %d responses, want 1", len(responses))
+	}
+}
+
+func TestDiscoverDelayedUnicastAfterDeadline(t *testing.T) {
+	target, requests, _ := startSSDPTestResponder(t, func(int, []byte) bool { return true })
+	unicast := make(chan *net.UDPAddr, 1)
+	go func() {
+		time.Sleep(80 * time.Millisecond)
+		unicast <- target
+		close(unicast)
+	}()
+
+	responses, err := discoverTargets(
+		context.Background(),
+		50*time.Millisecond,
+		nil,
+		unicast,
+		netip.Addr.IsLoopback,
+		20*time.Millisecond,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(responses) != 1 {
+		t.Fatalf("discoverTargets() returned %d responses, want 1", len(responses))
+	}
+	if requests.Load() == 0 {
+		t.Fatal("no unicast search was sent")
+	}
+}
+
+func TestDiscoverNilUnicast(t *testing.T) {
+	target, _, _ := startSSDPTestResponder(t, func(int, []byte) bool { return true })
+
+	responses, err := discoverTargets(
+		context.Background(),
+		60*time.Millisecond,
+		target,
+		nil,
+		netip.Addr.IsLoopback,
+		20*time.Millisecond,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(responses) != 1 {
+		t.Fatalf("discoverTargets() returned %d responses, want 1", len(responses))
+	}
+}
+
+func TestDiscoverClosedUnicastReturnsAtDeadline(t *testing.T) {
+	wait := 80 * time.Millisecond
+	unicast := make(chan *net.UDPAddr)
+	close(unicast)
+	start := time.Now()
+	_, err := discoverTargets(
+		context.Background(),
+		wait,
+		nil,
+		unicast,
+		netip.Addr.IsLoopback,
+		20*time.Millisecond,
+	)
+	if err == nil {
+		t.Fatal("discoverTargets() error = nil, want no-send error")
+	}
+	if elapsed := time.Since(start); elapsed < wait-10*time.Millisecond || elapsed > wait+500*time.Millisecond {
+		t.Fatalf("discoverTargets() took %s, want return near %s", elapsed, wait)
+	}
+}
+
+func TestDiscoverNeverClosedUnicastReturnsOnCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	unicast := make(chan *net.UDPAddr)
+	returned := make(chan error, 1)
+	started := make(chan struct{})
+	go func() {
+		close(started)
+		_, err := discoverTargets(
+			ctx,
+			40*time.Millisecond,
+			nil,
+			unicast,
+			netip.Addr.IsLoopback,
+			20*time.Millisecond,
+		)
+		returned <- err
+	}()
+	<-started
+
+	time.Sleep(80 * time.Millisecond)
+	select {
+	case err := <-returned:
+		t.Fatalf("discoverTargets() returned before cancellation: %v", err)
+	default:
+	}
+
+	cancelledAt := time.Now()
+	cancel()
+	select {
+	case err := <-returned:
+		if time.Since(cancelledAt) > 500*time.Millisecond {
+			t.Fatal("discoverTargets() returned too slowly after cancellation")
+		}
+		if err == nil {
+			t.Fatal("discoverTargets() error = nil, want no-send error")
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("discoverTargets() did not return after cancellation")
+	}
+}
+
+func TestDiscoverCancellationAfterRetrySend(t *testing.T) {
+	target, _, _ := startSSDPTestResponder(t, func(int, []byte) bool { return true })
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	previous := afterRetrySend
+	t.Cleanup(func() { afterRetrySend = previous })
+	afterRetrySend = cancel
+
+	start := time.Now()
+	_, _ = discoverTargets(
+		ctx,
+		time.Second,
+		target,
+		nil,
+		netip.Addr.IsLoopback,
+		20*time.Millisecond,
+	)
+	if elapsed := time.Since(start); elapsed > 500*time.Millisecond {
+		t.Fatalf("discoverTargets() took %s after cancellation, want under 500ms", elapsed)
+	}
+}
+
 func startSSDPTestResponder(
 	t *testing.T,
 	respond func(int, []byte) bool,
