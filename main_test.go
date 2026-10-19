@@ -1865,6 +1865,27 @@ func TestFetchDescriptionsPrefersGatewayDescription(t *testing.T) {
 			wantGatewayIGD: true,
 		},
 		{
+			name: "UPnP WAN service reply beats DSL Forum IGD without IGD device reply",
+			ip:   gateway,
+			responses: []ssdp.Response{
+				response(gateway, "urn:dslforum-org:device:InternetGatewayDevice:1", "49443"),
+				response(gateway, "upnp:rootdevice", "5000"),
+				response(gateway, "urn:schemas-upnp-org:service:WANIPConnection:1", "5000"),
+			},
+			wantLocation:   "http://192.168.1.1:5000/rootDesc.xml",
+			wantGatewayIGD: true,
+		},
+		{
+			name: "UPnP MediaServer does not beat root device",
+			ip:   gateway,
+			responses: []ssdp.Response{
+				response(gateway, "urn:schemas-upnp-org:device:MediaServer:1", "8200"),
+				response(gateway, "upnp:rootdevice", "5000"),
+			},
+			wantLocation:   "http://192.168.1.1:5000/rootDesc.xml",
+			wantGatewayIGD: true,
+		},
+		{
 			name: "root device beats UUID response for non-gateway",
 			ip:   secondary,
 			responses: []ssdp.Response{

@@ -743,7 +743,7 @@ func fetchDescriptions(ctx context.Context, client *http.Client, responses []ssd
 
 func descriptionPriority(response ssdp.Response) int {
 	switch {
-	case strings.Contains(strings.ToLower(response.ST), "urn:schemas-upnp-org:device:internetgatewaydevice:"):
+	case isUPnPIGDResponse(response.ST):
 		return 3
 	case ssdp.IsGateway(response):
 		return 2
@@ -752,6 +752,18 @@ func descriptionPriority(response ssdp.Response) int {
 	default:
 		return 0
 	}
+}
+
+func isUPnPIGDResponse(st string) bool {
+	st = strings.ToLower(st)
+	return strings.HasPrefix(st, "urn:schemas-upnp-org:") &&
+		(strings.Contains(st, ":device:internetgatewaydevice:") ||
+			strings.Contains(st, ":device:wandevice:") ||
+			strings.Contains(st, ":device:wanconnectiondevice:") ||
+			strings.Contains(st, ":service:wanipconnection:") ||
+			strings.Contains(st, ":service:wanpppconnection:") ||
+			strings.Contains(st, ":service:wancommoninterfaceconfig:") ||
+			strings.Contains(st, ":service:layer3forwarding:"))
 }
 
 func lookupDeviceNames(ctx context.Context, hosts []netip.Addr) map[netip.Addr]string {
