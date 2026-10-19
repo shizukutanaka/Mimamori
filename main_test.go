@@ -340,6 +340,34 @@ func TestFrigateNoAuthFinding(t *testing.T) {
 	}
 }
 
+func TestNodeREDNoAuthFinding(t *testing.T) {
+	ip := netip.MustParseAddr("192.168.1.10")
+	deviceName := "Node-RED"
+	findings := makeFindings(
+		[]probe.Open{{IP: ip, Port: 1880}},
+		nil,
+		netip.Addr{},
+		map[netip.Addr]ssdp.Description{},
+		map[netip.Addr]string{ip: deviceName},
+		nil,
+		nil,
+		"en",
+	)
+	if len(findings) != 1 {
+		t.Fatalf("makeFindings() returned %d findings, want one: %#v", len(findings), findings)
+	}
+	finding := findings[0]
+	if finding.ID != "nodered_noauth" || finding.Level != report.Danger || finding.Points != 25 {
+		t.Fatalf("Node-RED finding = %#v, want nodered_noauth/Danger/25", finding)
+	}
+	if finding.IP != ip.String() || finding.Device != deviceName {
+		t.Fatalf("Node-RED finding target = %#v, want IP %s and device %q", finding, ip, deviceName)
+	}
+	if finding.Message != i18n.T("en", "nodered_noauth", deviceName) || finding.Fix != i18n.T("en", "nodered_noauth_fix") {
+		t.Fatalf("Node-RED finding text = %#v, want localized message and fix", finding)
+	}
+}
+
 func TestRTSP8554Finding(t *testing.T) {
 	ip := netip.MustParseAddr("192.168.1.23")
 	findings := makeFindings(
