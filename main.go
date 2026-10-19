@@ -312,7 +312,7 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 	if existed && !firstRun && loadState == historyLoadReady {
 		if lastRun, ok := store.LastRun(); ok {
 			checkNow := time.Now().UTC()
-			days := daysSinceLastCheck(checkNow, lastRun)
+			days := daysSinceLastCheck(checkNow, lastRun, time.Local)
 			lastCheckDays = &days
 		}
 	}
@@ -338,6 +338,7 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 			newDeviceFindings[host] = findingID
 		}
 	}
+	store.LastCheck = now
 
 	devices := make([]deviceOutput, 0, len(reportedHosts))
 	for _, host := range reportedHosts {

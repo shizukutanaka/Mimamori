@@ -20,11 +20,71 @@ func TestDaysSinceLastCheck(t *testing.T) {
 		{name: "one day", last: now.Add(-24 * time.Hour), want: 1},
 		{name: "twelve days", last: now.Add(-12 * 24 * time.Hour), want: 12},
 		{name: "clock skew", last: now.Add(time.Hour), want: 0},
+		{
+			name: "calendar day in JST",
+			last: time.Date(2025, 4, 14, 23, 55, 0, 0, time.FixedZone("JST", 9*3600)),
+			want: 1,
+		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := daysSinceLastCheck(now, test.last); got != test.want {
+			if got := daysSinceLastCheck(now, test.last, time.UTC); got != test.want {
+				t.Fatalf("daysSinceLastCheck() = %d, want %d", got, test.want)
+			}
+		})
+	}
+}
+
+func TestDaysSinceLastCheckCalendarDates(t *testing.T) {
+	loc := time.FixedZone("JST", 9*3600)
+	nextDay := time.Date(2025, 4, 15, 0, 5, 0, 0, loc)
+	tests := []struct {
+		name string
+		now  time.Time
+		last time.Time
+		loc  *time.Location
+		want int
+	}{
+		{
+			name: "crosses JST midnight",
+			now:  nextDay,
+			last: time.Date(2025, 4, 14, 23, 55, 0, 0, loc),
+			loc:  loc,
+			want: 1,
+		},
+		{
+			name: "same date despite elapsed time",
+			now:  time.Date(2025, 4, 14, 23, 55, 0, 0, loc),
+			last: time.Date(2025, 4, 14, 0, 5, 0, 0, loc),
+			loc:  loc,
+			want: 0,
+		},
+		{
+			name: "two calendar boundaries in 47 hours",
+			now:  time.Date(2025, 4, 3, 0, 10, 0, 0, loc),
+			last: time.Date(2025, 4, 1, 0, 30, 0, 0, loc),
+			loc:  loc,
+			want: 2,
+		},
+		{
+			name: "clock skew",
+			now:  time.Date(2025, 4, 14, 23, 55, 0, 0, loc),
+			last: nextDay,
+			loc:  loc,
+			want: 0,
+		},
+		{
+			name: "UTC dates differ from JST",
+			now:  nextDay,
+			last: time.Date(2025, 4, 14, 23, 55, 0, 0, loc),
+			loc:  time.UTC,
+			want: 0,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := daysSinceLastCheck(test.now, test.last, test.loc); got != test.want {
 				t.Fatalf("daysSinceLastCheck() = %d, want %d", got, test.want)
 			}
 		})
