@@ -69,7 +69,7 @@ func vulnerableUPnPComponent(server string) (string, bool) {
 		if majorErr != nil || minorErr != nil || patchErr != nil {
 			continue
 		}
-		if major > 1 || major == 1 && (minor > 6 || minor == 6 && patch >= 18) {
+		if major > 1 || major == 1 && (minor > 6 || minor == 6 && patch >= 21) {
 			continue
 		}
 		if match[0] < firstMatch {
