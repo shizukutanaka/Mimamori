@@ -7,8 +7,6 @@ import (
 	"io"
 	"net/http"
 	"net/netip"
-	"strconv"
-	"strings"
 	"time"
 )
 
@@ -52,50 +50,8 @@ func ParseAuth(body []byte) bool {
 }
 
 func isNegativeOneJSONNumber(raw json.RawMessage) bool {
-	var decoded any
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.UseNumber()
-	if err := decoder.Decode(&decoded); err != nil {
-		return false
-	}
-	number, ok := decoded.(json.Number)
-	if !ok {
-		return false
-	}
-	numberText := number.String()
-	if !strings.HasPrefix(numberText, "-") {
-		return false
-	}
-	numberText = numberText[1:]
-	exponent := int64(0)
-	if index := strings.IndexAny(numberText, "eE"); index >= 0 {
-		parsed, err := strconv.ParseInt(numberText[index+1:], 10, 64)
-		if err != nil {
-			return false
-		}
-		exponent = parsed
-		numberText = numberText[:index]
-		maxExponent := int64(len(numberText) + 1)
-		if exponent > maxExponent || exponent < -maxExponent {
-			return false
-		}
-	}
-	fractionalDigits := 0
-	if index := strings.IndexByte(numberText, '.'); index >= 0 {
-		fractionalDigits = len(numberText) - index - 1
-		numberText = numberText[:index] + numberText[index+1:]
-	}
-	digits := strings.TrimLeft(numberText, "0")
-	if digits == "" {
-		return false
-	}
-	scale := exponent - int64(fractionalDigits)
-	trailingZeros := len(digits) - len(strings.TrimRight(digits, "0"))
-	if trailingZeros > 0 {
-		digits = digits[:len(digits)-trailingZeros]
-		scale += int64(trailingZeros)
-	}
-	return digits == "1" && scale == 0
+	var number float64
+	return json.Unmarshal(raw, &number) == nil && number == -1
 }
 
 func Unauthenticated(ctx context.Context, ip netip.Addr, port int, timeout time.Duration) bool {
