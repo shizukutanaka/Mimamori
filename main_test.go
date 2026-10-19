@@ -677,8 +677,8 @@ func TestSanitizeName(t *testing.T) {
 		t.Fatalf("sanitizeName(escape sequences) = %q", got)
 	}
 	for _, r := range got {
-		if unicode.IsControl(r) || r >= 0x200B && r <= 0x200F ||
-			r >= 0x202A && r <= 0x202E || r >= 0x2066 && r <= 0x2069 || r == 0xFEFF {
+		if unicode.IsControl(r) || unicode.Is(unicode.Bidi_Control, r) ||
+			r >= 0x200B && r <= 0x200D || r == 0xFEFF {
 			t.Errorf("sanitizeName left excluded rune U+%04X in %q", r, got)
 		}
 	}
@@ -713,6 +713,11 @@ func TestStripUnsafeRunes(t *testing.T) {
 			name:  "preserves spaces and Japanese",
 			input: "家の device name と 通常のスペース",
 			want:  "家の device name と 通常のスペース",
+		},
+		{
+			name:  "removes Arabic letter mark",
+			input: "Cam\u061Cera",
+			want:  "Camera",
 		},
 	}
 	for _, test := range tests {
