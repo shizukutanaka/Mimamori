@@ -15,7 +15,14 @@ func TestScanFindsOpenPort(t *testing.T) {
 	}
 	defer listener.Close()
 	port := listener.Addr().(*net.TCPAddr).Port
-	closedPort := port + 1
+	closedListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	closedPort := closedListener.Addr().(*net.TCPAddr).Port
+	if err := closedListener.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	got := Scan(context.Background(), []netip.Addr{netip.MustParseAddr("127.0.0.1")}, []int{closedPort, port}, 300*time.Millisecond, 2)
 	if len(got) != 1 || got[0].Port != port {

@@ -3,6 +3,7 @@ package lan
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/netip"
 	"os"
 	"os/exec"
@@ -28,6 +29,11 @@ func ParseARP(text string) []Neighbor {
 	for _, line := range strings.Split(text, "\n") {
 		if strings.Contains(strings.ToLower(line), "incomplete") {
 			continue
+		}
+		if fields := strings.Fields(line); len(fields) >= 6 && strings.HasPrefix(fields[2], "0x") {
+			if flags, err := strconv.ParseUint(fields[2][2:], 16, 32); err != nil || flags&0x2 == 0 {
+				continue
+			}
 		}
 
 		ipText := ipv4Pattern.FindString(line)
@@ -99,7 +105,7 @@ func ReadARP(ctx context.Context) ([]Neighbor, error) {
 		if err != nil {
 			return nil, err
 		}
-		return ParseARP(string(data)), nil
+		return withoutAddresses(ParseARP(string(data)), localAddresses()), nil
 	}
 
 	name, args := "arp", []string{"-an"}
@@ -110,5 +116,44 @@ func ReadARP(ctx context.Context) ([]Neighbor, error) {
 	if err != nil {
 		return nil, fmt.Errorf("arp table: %w", err)
 	}
-	return ParseARP(string(output)), nil
+	return withoutAddresses(ParseARP(string(output)), localAddresses()), nil
+}
+
+func localAddresses() map[netip.Addr]struct{} {
+	addresses, err := net.InterfaceAddrs()
+	if err != nil {
+		return nil
+	}
+
+	local := make(map[netip.Addr]struct{}, len(addresses))
+	for _, address := range addresses {
+		var ip net.IP
+		switch address := address.(type) {
+		case *net.IPNet:
+			ip = address.IP
+		case *net.IPAddr:
+			ip = address.IP
+		default:
+			continue
+		}
+
+		if addr, ok := netip.AddrFromSlice(ip); ok {
+			local[addr.Unmap()] = struct{}{}
+		}
+	}
+	return local
+}
+
+func withoutAddresses(neighbors []Neighbor, excluded map[netip.Addr]struct{}) []Neighbor {
+	if len(excluded) == 0 {
+		return neighbors
+	}
+
+	filtered := make([]Neighbor, 0, len(neighbors))
+	for _, neighbor := range neighbors {
+		if _, skip := excluded[neighbor.IP]; !skip {
+			filtered = append(filtered, neighbor)
+		}
+	}
+	return filtered
 }

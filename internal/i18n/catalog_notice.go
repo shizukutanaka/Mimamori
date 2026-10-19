@@ -18,8 +18,8 @@ var noticeMessages = map[string]map[string]string{
 		"scanning_notice":   "正在檢查您的家庭網路。這需要一些時間…",
 	},
 	"es": {
-		"incomplete_notice": "No se pudieron realizar algunas comprobaciones, así que el resultado puede estar incompleto. Vuelve a ejecutarlo conectado a la red de casa.",
-		"scanning_notice":   "Estamos comprobando tu red doméstica. Esto tardará un poco…",
+		"incomplete_notice": "No se pudieron realizar algunas comprobaciones, así que el resultado puede estar incompleto. Vuelva a ejecutarlo conectado a la red de casa.",
+		"scanning_notice":   "Estamos comprobando su red doméstica. Esto tardará un poco…",
 	},
 	"pt": {
 		"incomplete_notice": "Não foi possível executar algumas verificações, então o resultado pode estar incompleto. Tente novamente conectado à rede de casa.",
