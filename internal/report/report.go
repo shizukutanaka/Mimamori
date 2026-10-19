@@ -50,7 +50,7 @@ func Status(score int, findings []Finding) string {
 }
 
 func Sort(findings []Finding) {
-	sort.Slice(findings, func(i, j int) bool {
+	sort.SliceStable(findings, func(i, j int) bool {
 		left, right := findings[i], findings[j]
 		if left.Level != right.Level {
 			return left.Level == Danger
@@ -63,6 +63,15 @@ func Sort(findings []Finding) {
 		if leftErr == nil && rightErr == nil && leftIP != rightIP {
 			return leftIP.Less(rightIP)
 		}
-		return left.IP < right.IP
+		if left.IP != right.IP {
+			return left.IP < right.IP
+		}
+		if left.ID != right.ID {
+			return left.ID < right.ID
+		}
+		if left.Port != right.Port {
+			return left.Port < right.Port
+		}
+		return left.Device < right.Device
 	})
 }

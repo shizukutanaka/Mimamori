@@ -69,16 +69,32 @@ func TestSweepHosts(t *testing.T) {
 			},
 		},
 		{
-			name:      "/16 with gateway outside own /24 is skipped",
+			name:      "/16 with gateway outside own /24 sweeps gateway's /24",
 			prefixes:  []netip.Prefix{netip.MustParsePrefix("10.0.5.7/16")},
 			gateway:   netip.MustParseAddr("10.0.0.1"),
-			wantCount: 0,
+			wantCount: 255,
+			wantInclude: []netip.Addr{
+				netip.MustParseAddr("10.0.0.1"),
+				netip.MustParseAddr("10.0.0.255"),
+			},
+			wantExclude: []netip.Addr{
+				netip.MustParseAddr("10.0.0.0"),
+				netip.MustParseAddr("10.0.5.1"),
+			},
 		},
 		{
-			name:      "/23 with gateway outside own /24 is skipped",
+			name:      "/23 with gateway outside own /24 sweeps gateway's /24",
 			prefixes:  []netip.Prefix{netip.MustParsePrefix("192.168.1.7/23")},
 			gateway:   netip.MustParseAddr("192.168.0.1"),
-			wantCount: 0,
+			wantCount: 255,
+			wantInclude: []netip.Addr{
+				netip.MustParseAddr("192.168.0.1"),
+				netip.MustParseAddr("192.168.0.255"),
+			},
+			wantExclude: []netip.Addr{
+				netip.MustParseAddr("192.168.0.0"),
+				netip.MustParseAddr("192.168.1.1"),
+			},
 		},
 		{
 			name:      "/23 own /24 includes final address but excludes original network",
