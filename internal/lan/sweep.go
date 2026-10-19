@@ -32,10 +32,7 @@ func SweepHosts(prefixes []netip.Prefix, gateway netip.Addr) []netip.Addr {
 		subnet := originalSubnet
 		capped := subnet.Bits() < 24
 		if capped {
-			subnet = netip.PrefixFrom(prefix.Addr(), 24).Masked()
-			if !subnet.Contains(gateway) {
-				continue
-			}
+			subnet = netip.PrefixFrom(gateway, 24).Masked()
 		} else if subnet.Bits() > 30 {
 			continue
 		}
