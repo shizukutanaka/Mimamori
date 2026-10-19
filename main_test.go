@@ -1535,7 +1535,7 @@ func TestRenderTextCheckedLine(t *testing.T) {
 				Score: 100, Status: "safe", Devices: make([]deviceOutput, 12),
 				Checks: checkedSummary{Ports: true, PortForwards: true, WiFi: true},
 			},
-			want: "Checked: 12 devices · risky ports · router port forwards · Wi-Fi encryption",
+			want: "Checked: 12 devices · risky ports · router UPnP port forwards · Wi-Fi encryption",
 		},
 		{
 			name: "devices and risky ports only",
@@ -1553,7 +1553,7 @@ func TestRenderTextCheckedLine(t *testing.T) {
 				Score: 100, Status: "safe", Devices: make([]deviceOutput, 12),
 				Checks: checkedSummary{Ports: true, PortForwards: true, WiFi: true},
 			},
-			want: "確認したこと: 機器 12台・危険なポート・ルーターのポート転送・Wi-Fi の暗号化",
+			want: "確認したこと: 機器 12台・危険なポート・ルーターの UPnP ポート転送・Wi-Fi の暗号化",
 		},
 	}
 	for _, test := range tests {
