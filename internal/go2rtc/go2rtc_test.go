@@ -29,14 +29,25 @@ func TestParseAPIInfo(t *testing.T) {
 			body:   `{"host":"192.168.1.5:1984","revision":"a1b2c3d","version":"1.9.9"}`,
 		},
 		{
-			name:   "missing revision",
+			name:   "missing host",
 			status: http.StatusOK,
 			body:   `{"version":"1.9.9"}`,
 		},
 		{
 			name:   "empty version",
 			status: http.StatusOK,
-			body:   `{"revision":"a1b2c3d","version":""}`,
+			body:   `{"host":"192.168.1.5:1984","revision":"a1b2c3d","version":""}`,
+		},
+		{
+			name:   "go2rtc before 1.9.2 has no revision",
+			status: http.StatusOK,
+			body:   `{"config_path":"/config/go2rtc.yaml","host":"192.168.1.5:1984","version":"1.8.4"}`,
+			want:   true,
+		},
+		{
+			name:   "version without host is not go2rtc",
+			status: http.StatusOK,
+			body:   `{"revision":"a1b2c3d","version":"1.9.9"}`,
 		},
 		{
 			name:   "non-JSON",

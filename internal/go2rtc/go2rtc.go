@@ -27,7 +27,7 @@ func ParseAPIInfo(status int, body []byte) bool {
 	if err := json.Unmarshal(version, &versionString); err != nil || versionString == "" {
 		return false
 	}
-	_, ok = info["revision"]
+	_, ok = info["host"]
 	return ok
 }
 
