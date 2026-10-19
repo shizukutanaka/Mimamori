@@ -12,6 +12,8 @@ import (
 
 var ErrInvalidJSON = errors.New("invalid device history JSON")
 
+var syncDirFunc = syncDir
+
 type Seen struct {
 	FirstSeen time.Time `json:"first_seen"`
 	LastSeen  time.Time `json:"last_seen"`
@@ -75,8 +77,19 @@ func (s *Store) Observe(mac, ip, name string, now time.Time) (isNew bool) {
 
 func Save(path string, store Store) error {
 	directory := filepath.Dir(path)
+	var createdDirectories []string
+	for current := directory; current != filepath.Dir(current); current = filepath.Dir(current) {
+		_, err := os.Stat(current)
+		if err == nil || !errors.Is(err, os.ErrNotExist) {
+			break
+		}
+		createdDirectories = append(createdDirectories, current)
+	}
 	if err := os.MkdirAll(directory, 0700); err != nil {
 		return err
+	}
+	for _, created := range createdDirectories {
+		syncDirFunc(filepath.Dir(created))
 	}
 	data, err := json.MarshalIndent(store, "", "  ")
 	if err != nil {
@@ -96,10 +109,18 @@ func Save(path string, store Store) error {
 		_ = file.Close()
 		return err
 	}
+	if err := file.Sync(); err != nil {
+		_ = file.Close()
+		return err
+	}
 	if err := file.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tempPath, path)
+	if err := renameReplace(tempPath, path); err != nil {
+		return err
+	}
+	syncDirFunc(directory)
+	return nil
 }
 
 func Quarantine(path string) (string, error) {
