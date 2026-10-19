@@ -259,13 +259,14 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 	if gatewayIP.IsValid() {
 		scanTargets = mergeHosts(initialHosts, scanSweepHosts(prefixes, scope, gatewayIP))
 	}
-	opened := markSMB1(ctx, probe.Scan(ctx, scanTargets, []int{23, 2323, 21, 5900, 5555, 445, 554, 8554, 1883, 1984, 5000, 1880, 6052, 2375, 8123, 2376, 8080, 7125, 80, 8581, 11080}, 700*time.Millisecond, 128))
+	opened := markSMB1(ctx, probe.Scan(ctx, scanTargets, []int{23, 2323, 21, 5900, 5555, 445, 554, 8554, 1883, 1984, 5000, 1880, 6052, 2375, 8123, 2376, 8080, 7125, 80, 8581, 11080, 8384}, 700*time.Millisecond, 128))
 	opened = markUnauthenticatedRTSP(ctx, opened)
 	opened = markUnauthenticatedMQTT(ctx, opened)
 	opened = markUnauthenticatedGo2RTC(ctx, opened)
 	opened = markUnauthenticatedFrigate(ctx, opened)
 	opened = markUnauthenticatedNodeRED(ctx, opened)
 	opened = markUnauthenticatedHomebridge(ctx, opened)
+	opened = markUnauthenticatedSyncthing(ctx, opened)
 	opened = markUnclaimedScrypted(ctx, opened)
 	opened = markUnauthenticatedESPHome(ctx, opened)
 	opened = markUnauthenticatedDocker(ctx, opened)
@@ -921,6 +922,8 @@ func makeFindings(
 			findings = append(findings, report.Finding{ID: "moonraker_noauth", Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name})
 		case 8581:
 			findings = append(findings, report.Finding{ID: "homebridge_noauth", Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name})
+		case 8384:
+			findings = append(findings, report.Finding{ID: "syncthing_noauth", Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name})
 		case 11080:
 			findings = append(findings, report.Finding{ID: "scrypted_onboarding", Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name})
 		case 80:
@@ -1063,6 +1066,9 @@ func makeFindings(
 			finding.Message = i18n.T(lang, finding.ID, finding.Device)
 		}
 		if finding.ID == "homebridge_noauth" {
+			finding.Message = i18n.T(lang, finding.ID, finding.Device)
+		}
+		if finding.ID == "syncthing_noauth" {
 			finding.Message = i18n.T(lang, finding.ID, finding.Device)
 		}
 		if finding.ID == "scrypted_onboarding" {
