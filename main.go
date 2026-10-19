@@ -259,9 +259,10 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 	if gatewayIP.IsValid() {
 		scanTargets = mergeHosts(initialHosts, scanSweepHosts(prefixes, scope, gatewayIP))
 	}
-	opened := markSMB1(ctx, probe.Scan(ctx, scanTargets, []int{23, 2323, 21, 5900, 5555, 445, 554, 8554, 1883}, 700*time.Millisecond, 128))
+	opened := markSMB1(ctx, probe.Scan(ctx, scanTargets, []int{23, 2323, 21, 5900, 5555, 445, 554, 8554, 1883, 1984}, 700*time.Millisecond, 128))
 	opened = markUnauthenticatedRTSP(ctx, opened)
 	opened = markUnauthenticatedMQTT(ctx, opened)
+	opened = markUnauthenticatedGo2RTC(ctx, opened)
 	neighbors := arp.neighbors
 	opened = markUnauthenticatedVNC(ctx, opened)
 	opened = markUnauthenticatedADB(ctx, opened)
@@ -882,6 +883,8 @@ func makeFindings(
 			findings = append(findings, report.Finding{ID: "smb1_enabled", Level: report.Caution, Points: 8, IP: item.IP.String(), Device: name})
 		case 1883:
 			findings = append(findings, report.Finding{ID: "mqtt_anonymous", Level: report.Caution, Points: 8, IP: item.IP.String(), Device: name})
+		case 1984:
+			findings = append(findings, report.Finding{ID: "go2rtc_noauth", Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name})
 		case 23, 2323:
 			if _, exists := telnetSeen[item.IP]; exists {
 				continue
@@ -996,6 +999,9 @@ func makeFindings(
 			finding.Message = i18n.T(lang, finding.ID, finding.Device)
 		}
 		if finding.ID == "adb_noauth" {
+			finding.Message = i18n.T(lang, finding.ID, finding.Device)
+		}
+		if finding.ID == "go2rtc_noauth" {
 			finding.Message = i18n.T(lang, finding.ID, finding.Device)
 		}
 	}
