@@ -112,3 +112,51 @@ func TestHomeNeighbors(t *testing.T) {
 		})
 	}
 }
+
+func TestHomePrefixes(t *testing.T) {
+	tests := []struct {
+		name     string
+		prefixes []netip.Prefix
+		gateway  netip.Addr
+		want     []netip.Prefix
+	}{
+		{
+			name: "same home subnet on two interfaces",
+			prefixes: []netip.Prefix{
+				netip.MustParsePrefix("192.168.1.10/24"),
+				netip.MustParsePrefix("192.168.1.11/24"),
+			},
+			gateway: netip.MustParseAddr("192.168.1.1"),
+			want: []netip.Prefix{
+				netip.MustParsePrefix("192.168.1.10/24"),
+				netip.MustParsePrefix("192.168.1.11/24"),
+			},
+		},
+		{
+			name: "most specific prefix wins",
+			prefixes: []netip.Prefix{
+				netip.MustParsePrefix("192.168.0.0/16"),
+				netip.MustParsePrefix("192.168.1.10/24"),
+			},
+			gateway: netip.MustParseAddr("192.168.1.1"),
+			want:    []netip.Prefix{netip.MustParsePrefix("192.168.1.10/24")},
+		},
+		{
+			name:     "gateway in no prefix",
+			prefixes: []netip.Prefix{netip.MustParsePrefix("192.168.2.0/24")},
+			gateway:  netip.MustParseAddr("192.168.1.1"),
+		},
+		{
+			name:     "invalid gateway",
+			prefixes: []netip.Prefix{netip.MustParsePrefix("192.168.1.0/24")},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := homePrefixes(test.prefixes, test.gateway)
+			if !reflect.DeepEqual(got, test.want) {
+				t.Fatalf("homePrefixes() = %#v, want %#v", got, test.want)
+			}
+		})
+	}
+}
