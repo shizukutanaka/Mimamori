@@ -233,6 +233,52 @@ func TestADBOpenFinding(t *testing.T) {
 	}
 }
 
+func TestGo2RTCNoAuthFinding(t *testing.T) {
+	ip := netip.MustParseAddr("192.168.1.10")
+	deviceName := "Home Assistant"
+	findings := makeFindings(
+		[]probe.Open{{IP: ip, Port: 1984}},
+		nil,
+		netip.Addr{},
+		map[netip.Addr]ssdp.Description{},
+		map[netip.Addr]string{ip: deviceName},
+		nil,
+		nil,
+		"en",
+	)
+	if len(findings) != 1 {
+		t.Fatalf("makeFindings() returned %d findings, want one: %#v", len(findings), findings)
+	}
+	finding := findings[0]
+	if finding.ID != "go2rtc_noauth" || finding.Level != report.Danger || finding.Points != 25 {
+		t.Fatalf("go2rtc finding = %#v, want go2rtc_noauth/Danger/25", finding)
+	}
+	if !strings.Contains(finding.Message, deviceName) {
+		t.Fatalf("go2rtc message = %q, want it to contain %q", finding.Message, deviceName)
+	}
+}
+
+func TestRTSP8554Finding(t *testing.T) {
+	ip := netip.MustParseAddr("192.168.1.23")
+	findings := makeFindings(
+		[]probe.Open{{IP: ip, Port: 8554}},
+		nil,
+		netip.Addr{},
+		map[netip.Addr]ssdp.Description{},
+		map[netip.Addr]string{ip: "Home Assistant"},
+		nil,
+		nil,
+		"en",
+	)
+	if len(findings) != 1 {
+		t.Fatalf("makeFindings() returned %d findings, want one: %#v", len(findings), findings)
+	}
+	finding := findings[0]
+	if finding.ID != "rtsp_noauth" || finding.Level != report.Caution || finding.Points != 8 {
+		t.Fatalf("RTSP finding = %#v, want rtsp_noauth/Caution/8", finding)
+	}
+}
+
 func TestNewDeviceFindingClassification(t *testing.T) {
 	ip := netip.MustParseAddr("192.168.1.11")
 	deviceName := "My phone"

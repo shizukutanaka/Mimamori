@@ -12,7 +12,7 @@ import (
 func markUnauthenticatedRTSP(ctx context.Context, opened []probe.Open) []probe.Open {
 	candidates := make([]int, 0, len(opened))
 	for index, candidate := range opened {
-		if candidate.Port == 554 {
+		if rtspPort(candidate.Port) {
 			candidates = append(candidates, index)
 		}
 	}
@@ -57,9 +57,13 @@ func markUnauthenticatedRTSP(ctx context.Context, opened []probe.Open) []probe.O
 	}
 	filtered := make([]probe.Open, 0, len(opened))
 	for index, candidate := range opened {
-		if candidate.Port != 554 || unauthenticated[index] {
+		if !rtspPort(candidate.Port) || unauthenticated[index] {
 			filtered = append(filtered, candidate)
 		}
 	}
 	return filtered
+}
+
+func rtspPort(port int) bool {
+	return port == 554 || port == 8554
 }
