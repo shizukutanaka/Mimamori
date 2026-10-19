@@ -356,3 +356,26 @@ func TestHTTPSRequestURL(t *testing.T) {
 		})
 	}
 }
+
+func TestRedirectPortMatches(t *testing.T) {
+	tests := []struct {
+		name         string
+		locationPort string
+		httpsPort    int
+		want         bool
+	}{
+		{name: "443 omitted", httpsPort: 443, want: true},
+		{name: "443 explicit", locationPort: "443", httpsPort: 443, want: true},
+		{name: "443 mismatched", locationPort: "8443", httpsPort: 443},
+		{name: "non-default explicit", locationPort: "8443", httpsPort: 8443, want: true},
+		{name: "non-default omitted", httpsPort: 8443},
+		{name: "non-default redirected to 443", locationPort: "443", httpsPort: 8443},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := redirectPortMatches(test.locationPort, test.httpsPort); got != test.want {
+				t.Fatalf("redirectPortMatches(%q, %d) = %t, want %t", test.locationPort, test.httpsPort, got, test.want)
+			}
+		})
+	}
+}
