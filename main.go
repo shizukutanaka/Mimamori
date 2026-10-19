@@ -259,7 +259,7 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 	if gatewayIP.IsValid() {
 		scanTargets = mergeHosts(initialHosts, scanSweepHosts(prefixes, scope, gatewayIP))
 	}
-	opened := markSMB1(ctx, probe.Scan(ctx, scanTargets, []int{23, 2323, 21, 5900, 5555, 445, 554, 8554, 1883, 1984, 5000, 1880, 6052, 2375}, 700*time.Millisecond, 128))
+	opened := markSMB1(ctx, probe.Scan(ctx, scanTargets, []int{23, 2323, 21, 5900, 5555, 445, 554, 8554, 1883, 1984, 5000, 1880, 6052, 2375, 8123}, 700*time.Millisecond, 128))
 	opened = markUnauthenticatedRTSP(ctx, opened)
 	opened = markUnauthenticatedMQTT(ctx, opened)
 	opened = markUnauthenticatedGo2RTC(ctx, opened)
@@ -267,6 +267,7 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 	opened = markUnauthenticatedNodeRED(ctx, opened)
 	opened = markUnauthenticatedESPHome(ctx, opened)
 	opened = markUnauthenticatedDocker(ctx, opened)
+	opened = markOpenHomeAssistantOnboarding(ctx, opened)
 	neighbors := arp.neighbors
 	opened = markUnauthenticatedVNC(ctx, opened)
 	opened = markUnauthenticatedADB(ctx, opened)
@@ -905,6 +906,8 @@ func makeFindings(
 			findings = append(findings, report.Finding{ID: "esphome_noauth", Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name})
 		case 2375:
 			findings = append(findings, report.Finding{ID: "docker_noauth", Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name})
+		case 8123:
+			findings = append(findings, report.Finding{ID: "homeassistant_onboarding", Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name})
 		case 23, 2323:
 			if _, exists := telnetSeen[item.IP]; exists {
 				continue
@@ -1038,6 +1041,9 @@ func makeFindings(
 			finding.Message = i18n.T(lang, finding.ID, finding.Device)
 		}
 		if finding.ID == "docker_noauth" {
+			finding.Message = i18n.T(lang, finding.ID, finding.Device)
+		}
+		if finding.ID == "homeassistant_onboarding" {
 			finding.Message = i18n.T(lang, finding.ID, finding.Device)
 		}
 	}
