@@ -1835,6 +1835,31 @@ func TestMergeHostsDeduplicatesSortsAndCaps(t *testing.T) {
 	}
 }
 
+func TestWithoutHosts(t *testing.T) {
+	first := netip.MustParseAddr("192.168.1.10")
+	second := netip.MustParseAddr("192.168.1.11")
+	third := netip.MustParseAddr("192.168.1.12")
+	tests := []struct {
+		name    string
+		hosts   []netip.Addr
+		exclude []netip.Addr
+		want    []netip.Addr
+	}{
+		{name: "empty", hosts: []netip.Addr{}, want: []netip.Addr{}},
+		{name: "all excluded", hosts: []netip.Addr{first, second}, exclude: []netip.Addr{first, second}, want: []netip.Addr{}},
+		{name: "partial exclusion", hosts: []netip.Addr{first, second, third}, exclude: []netip.Addr{second}, want: []netip.Addr{first, third}},
+		{name: "preserves order", hosts: []netip.Addr{third, first, second}, exclude: []netip.Addr{second}, want: []netip.Addr{third, first}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := withoutHosts(test.hosts, test.exclude)
+			if !reflect.DeepEqual(got, test.want) {
+				t.Fatalf("withoutHosts() = %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
 func TestLiveSweepHosts(t *testing.T) {
 	sweep := []netip.Addr{
 		netip.MustParseAddr("192.168.1.10"),
