@@ -270,7 +270,7 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 	opened = markOpenHomeAssistantOnboarding(ctx, opened)
 	opened = markUnauthenticatedZigbee2MQTT(ctx, opened)
 	opened = markUnauthenticatedMoonraker(ctx, opened)
-	opened = markUnauthenticatedTasmota(ctx, opened)
+	opened = markUnauthenticatedWeb(ctx, opened)
 	neighbors := arp.neighbors
 	opened = markUnauthenticatedVNC(ctx, opened)
 	opened = markUnauthenticatedADB(ctx, opened)
@@ -918,7 +918,11 @@ func makeFindings(
 		case 7125:
 			findings = append(findings, report.Finding{ID: "moonraker_noauth", Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name})
 		case 80:
-			findings = append(findings, report.Finding{ID: "tasmota_noauth", Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name})
+			service := "tasmota_noauth"
+			if item.Service == "shelly" {
+				service = "shelly_noauth"
+			}
+			findings = append(findings, report.Finding{ID: service, Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name})
 		case 23, 2323:
 			if _, exists := telnetSeen[item.IP]; exists {
 				continue
@@ -1067,6 +1071,9 @@ func makeFindings(
 			finding.Message = i18n.T(lang, finding.ID, finding.Device)
 		}
 		if finding.ID == "tasmota_noauth" {
+			finding.Message = i18n.T(lang, finding.ID, finding.Device)
+		}
+		if finding.ID == "shelly_noauth" {
 			finding.Message = i18n.T(lang, finding.ID, finding.Device)
 		}
 	}

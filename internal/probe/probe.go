@@ -12,8 +12,9 @@ import (
 )
 
 type Open struct {
-	IP   netip.Addr
-	Port int
+	IP      netip.Addr
+	Port    int
+	Service string
 }
 
 type target struct {
