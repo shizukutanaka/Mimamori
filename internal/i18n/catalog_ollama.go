@@ -18,8 +18,8 @@ var ollamaMessages = map[string]map[string]string{
 		"ollama_open_fix": "如果不需要其他裝置存取，請將 OLLAMA_HOST 設為 127.0.0.1:11434（Docker 請使用 -p 127.0.0.1:11434:11434 發佈連接埠）。在 Windows 或 Mac 應用程式的 Settings 中，請關閉「Expose Ollama to the network」。",
 	},
 	"es": {
-		"ollama_open":     "Ollama (IA local, puerto 11434) en %s está abierto a tu red y no tiene contraseña. Cualquiera en casa puede ejecutar modelos en la GPU de este equipo, eliminarlos y usar modelos en la nube con su cuenta de ollama.com si ha iniciado sesión.",
-		"ollama_open_fix": "Si ningún otro dispositivo lo necesita, configura OLLAMA_HOST como 127.0.0.1:11434 (en Docker, publica con -p 127.0.0.1:11434:11434). En la aplicación de Windows o Mac, desactiva «Expose Ollama to the network» en Settings.",
+		"ollama_open":     "Ollama (IA local, puerto 11434) en %s está abierto a su red y no tiene contraseña. Cualquiera en casa puede ejecutar modelos en la GPU de este equipo, eliminarlos y usar modelos en la nube con su cuenta de ollama.com si ha iniciado sesión.",
+		"ollama_open_fix": "Si ningún otro dispositivo lo necesita, configure OLLAMA_HOST como 127.0.0.1:11434 (en Docker, publique con -p 127.0.0.1:11434:11434). En la aplicación de Windows o Mac, desactive «Expose Ollama to the network» en Settings.",
 	},
 	"pt": {
 		"ollama_open":     "O Ollama (IA local, porta 11434) em %s está aberto à sua rede e não tem senha. Qualquer pessoa em casa pode executar modelos na GPU deste computador, excluí-los e usar modelos na nuvem com a conta ollama.com se ela estiver conectada.",

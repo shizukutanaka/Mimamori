@@ -18,8 +18,8 @@ var codeserverMessages = map[string]map[string]string{
 		"codeserver_noauth_fix": "請為容器設定 PASSWORD 或 HASHED_PASSWORD 環境變數並重新啟動（不要使用 --auth none 啟動）。",
 	},
 	"es": {
-		"codeserver_noauth":     "code-server (VS Code en el navegador, puerto 8443) en %s está abierto a tu red sin contraseña. Cualquiera en casa puede abrir su terminal desde el navegador y ejecutar cualquier comando.",
-		"codeserver_noauth_fix": "Configura la variable de entorno PASSWORD o HASHED_PASSWORD del contenedor y reinícialo (no lo inicies con --auth none).",
+		"codeserver_noauth":     "code-server (VS Code en el navegador, puerto 8443) en %s está abierto a su red sin contraseña. Cualquiera en casa puede abrir su terminal desde el navegador y ejecutar cualquier comando.",
+		"codeserver_noauth_fix": "Configure la variable de entorno PASSWORD o HASHED_PASSWORD del contenedor y reinícielo (no lo inicie con --auth none).",
 	},
 	"pt": {
 		"codeserver_noauth":     "O code-server (VS Code no navegador, porta 8443) em %s está aberto à sua rede sem senha. Qualquer pessoa em casa pode abrir o terminal no navegador e executar qualquer comando.",
