@@ -424,6 +424,34 @@ func TestSyncthingNoAuthFinding(t *testing.T) {
 	}
 }
 
+func TestTransmissionNoAuthFinding(t *testing.T) {
+	ip := netip.MustParseAddr("192.168.1.10")
+	deviceName := "Transmission"
+	findings := makeFindings(
+		[]probe.Open{{IP: ip, Port: 9091}},
+		nil,
+		netip.Addr{},
+		map[netip.Addr]ssdp.Description{},
+		map[netip.Addr]string{ip: deviceName},
+		nil,
+		nil,
+		"en",
+	)
+	if len(findings) != 1 {
+		t.Fatalf("makeFindings() returned %d findings, want one: %#v", len(findings), findings)
+	}
+	finding := findings[0]
+	if finding.ID != "transmission_noauth" || finding.Level != report.Danger || finding.Points != 25 {
+		t.Fatalf("Transmission finding = %#v, want transmission_noauth/Danger/25", finding)
+	}
+	if finding.IP != ip.String() || finding.Device != deviceName {
+		t.Fatalf("Transmission finding target = %#v, want IP %s and device %q", finding, ip, deviceName)
+	}
+	if finding.Message != i18n.T("en", "transmission_noauth", deviceName) || finding.Fix != i18n.T("en", "transmission_noauth_fix") {
+		t.Fatalf("Transmission finding text = %#v, want localized message and fix", finding)
+	}
+}
+
 func TestScryptedOnboardingFinding(t *testing.T) {
 	ip := netip.MustParseAddr("192.168.1.10")
 	deviceName := "Scrypted"
