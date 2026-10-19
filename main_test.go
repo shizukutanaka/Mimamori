@@ -396,6 +396,34 @@ func TestESPHomeNoAuthFinding(t *testing.T) {
 	}
 }
 
+func TestZigbee2MQTTNoAuthFinding(t *testing.T) {
+	ip := netip.MustParseAddr("192.168.1.10")
+	deviceName := "Zigbee2MQTT"
+	findings := makeFindings(
+		[]probe.Open{{IP: ip, Port: 8080}},
+		nil,
+		netip.Addr{},
+		map[netip.Addr]ssdp.Description{},
+		map[netip.Addr]string{ip: deviceName},
+		nil,
+		nil,
+		"en",
+	)
+	if len(findings) != 1 {
+		t.Fatalf("makeFindings() returned %d findings, want one: %#v", len(findings), findings)
+	}
+	finding := findings[0]
+	if finding.ID != "zigbee2mqtt_noauth" || finding.Level != report.Danger || finding.Points != 25 {
+		t.Fatalf("Zigbee2MQTT finding = %#v, want zigbee2mqtt_noauth/Danger/25", finding)
+	}
+	if finding.IP != ip.String() || finding.Device != deviceName {
+		t.Fatalf("Zigbee2MQTT finding target = %#v, want IP %s and device %q", finding, ip, deviceName)
+	}
+	if finding.Message != i18n.T("en", "zigbee2mqtt_noauth", deviceName) || finding.Fix != i18n.T("en", "zigbee2mqtt_noauth_fix") {
+		t.Fatalf("Zigbee2MQTT finding text = %#v, want localized message and fix", finding)
+	}
+}
+
 func TestDockerNoAuthFinding(t *testing.T) {
 	ip := netip.MustParseAddr("192.168.1.10")
 	deviceName := "Home Server"
