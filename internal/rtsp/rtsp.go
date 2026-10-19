@@ -14,24 +14,42 @@ import (
 
 const maxResponseBytes = 8 * 1024
 
-var headerSeparator = []byte("\r\n\r\n")
+// RFC 2326 §4 recommends accepting LF as a line terminator.
+func headerEnd(b []byte) (headerLength, bodyStart int, ok bool) {
+	lineStart := 0
+	for index, value := range b {
+		if value != '\n' {
+			continue
+		}
+		line := b[lineStart:index]
+		if len(line) == 0 || (len(line) == 1 && line[0] == '\r') {
+			return lineStart, index + 1, true
+		}
+		lineStart = index + 1
+	}
+	return 0, 0, false
+}
 
 func ParseDescribeResponse(b []byte) (status int, hasSDP bool, ok bool) {
-	headerEnd := bytes.Index(b, headerSeparator)
-	if headerEnd < 0 {
+	headerLength, _, found := headerEnd(b)
+	if !found {
 		return 0, false, false
 	}
 
-	header := b[:headerEnd]
-	lineEnd := bytes.Index(header, []byte("\r\n"))
-	statusLine := header
-	var headerLines []byte
-	if lineEnd >= 0 {
-		statusLine = header[:lineEnd]
-		headerLines = header[lineEnd+2:]
+	lines := bytes.Split(b[:headerLength], []byte("\n"))
+	if len(lines) > 0 && len(lines[len(lines)-1]) == 0 {
+		lines = lines[:len(lines)-1]
+	}
+	for index, line := range lines {
+		if len(line) > 0 && line[len(line)-1] == '\r' {
+			lines[index] = line[:len(line)-1]
+		}
+	}
+	if len(lines) == 0 {
+		return 0, false, false
 	}
 
-	fields := strings.Fields(string(statusLine))
+	fields := strings.Fields(string(lines[0]))
 	if len(fields) < 3 || fields[0] != "RTSP/1.0" || len(fields[1]) != 3 {
 		return 0, false, false
 	}
@@ -45,20 +63,18 @@ func ParseDescribeResponse(b []byte) (status int, hasSDP bool, ok bool) {
 		return 0, false, false
 	}
 
-	if len(headerLines) > 0 {
-		for _, line := range bytes.Split(headerLines, []byte("\r\n")) {
-			colon := bytes.IndexByte(line, ':')
-			if colon <= 0 {
-				return 0, false, false
-			}
-			name := strings.TrimSpace(string(line[:colon]))
-			if name == "" {
-				return 0, false, false
-			}
-			if strings.EqualFold(name, "Content-Type") &&
-				strings.Contains(strings.ToLower(string(line[colon+1:])), "application/sdp") {
-				hasSDP = true
-			}
+	for _, line := range lines[1:] {
+		colon := bytes.IndexByte(line, ':')
+		if colon <= 0 {
+			return 0, false, false
+		}
+		name := strings.TrimSpace(string(line[:colon]))
+		if name == "" {
+			return 0, false, false
+		}
+		if strings.EqualFold(name, "Content-Type") &&
+			strings.Contains(strings.ToLower(string(line[colon+1:])), "application/sdp") {
+			hasSDP = true
 		}
 	}
 	return status, hasSDP, true
@@ -106,8 +122,8 @@ func Unauthenticated(ctx context.Context, ip netip.Addr, port int, timeout time.
 				if status != 200 || !hasSDP {
 					return false
 				}
-				headerEnd := bytes.Index(response, headerSeparator)
-				if headerEnd >= 0 && len(response) > headerEnd+len(headerSeparator) {
+				_, bodyStart, found := headerEnd(response)
+				if found && len(response) > bodyStart {
 					return true
 				}
 			}

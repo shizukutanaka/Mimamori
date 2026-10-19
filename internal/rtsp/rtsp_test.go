@@ -28,6 +28,26 @@ func TestParseDescribeResponse(t *testing.T) {
 			ok:       true,
 		},
 		{
+			name:     "200 with SDP, LF only",
+			response: "RTSP/1.0 200 OK\nCSeq: 1\nContent-Type: application/sdp\n\nv=0\n",
+			status:   200,
+			hasSDP:   true,
+			ok:       true,
+		},
+		{
+			name:     "401, LF only",
+			response: "RTSP/1.0 401 Unauthorized\nWWW-Authenticate: Basic realm=\"camera\"\n\n",
+			status:   401,
+			ok:       true,
+		},
+		{
+			name:     "mixed CRLF and LF",
+			response: "RTSP/1.0 200 OK\r\nContent-Type: application/sdp\n\r\nv=0",
+			status:   200,
+			hasSDP:   true,
+			ok:       true,
+		},
+		{
 			name:     "200 without SDP",
 			response: "RTSP/1.0 200 OK\r\nContent-Type: text/plain\r\n\r\nok",
 			status:   200,
@@ -47,6 +67,7 @@ func TestParseDescribeResponse(t *testing.T) {
 		},
 		{name: "garbage", response: "not an RTSP response\r\n\r\n"},
 		{name: "truncated", response: "RTSP/1.0 200 OK\r\nContent-Type: application/sdp\r\n"},
+		{name: "truncated, LF only", response: "RTSP/1.0 200 OK\nContent-Type: application/sdp\n"},
 	}
 
 	for _, test := range tests {
@@ -75,8 +96,19 @@ func TestUnauthenticated(t *testing.T) {
 	}{
 		{name: "200 with SDP", response: response, timeout: time.Second, want: true},
 		{
+			name:     "200 with SDP, LF only",
+			response: "RTSP/1.0 200 OK\nContent-Type: application/sdp\n\nv=0\n",
+			timeout:  time.Second,
+			want:     true,
+		},
+		{
 			name:     "401",
 			response: "RTSP/1.0 401 Unauthorized\r\nCSeq: 1\r\nWWW-Authenticate: Basic\r\n\r\n",
+			timeout:  time.Second,
+		},
+		{
+			name:     "401, LF only",
+			response: "RTSP/1.0 401 Unauthorized\nWWW-Authenticate: Basic realm=\"camera\"\n\n",
 			timeout:  time.Second,
 		},
 		{name: "silent server", timeout: 200 * time.Millisecond, silent: true},
