@@ -250,7 +250,8 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 		}
 		scanTargets = mergeHosts(initialHosts, lan.SweepHosts(prefixes, gatewayIP))
 	}
-	opened := markSMB1(ctx, probe.Scan(ctx, scanTargets, []int{23, 2323, 21, 5900, 5555, 445, 1883}, 700*time.Millisecond, 128))
+	opened := markSMB1(ctx, probe.Scan(ctx, scanTargets, []int{23, 2323, 21, 5900, 5555, 445, 554, 1883}, 700*time.Millisecond, 128))
+	opened = markUnauthenticatedRTSP(ctx, opened)
 	opened = markUnauthenticatedMQTT(ctx, opened)
 	neighbors := arp.neighbors
 	opened = markUnauthenticatedVNC(ctx, opened)
@@ -794,6 +795,8 @@ func makeFindings(
 			findings = append(findings, report.Finding{ID: "vnc_noauth", Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name})
 		case 5555:
 			findings = append(findings, report.Finding{ID: "adb_open", Level: report.Caution, Points: 8, IP: item.IP.String(), Device: name})
+		case 554:
+			findings = append(findings, report.Finding{ID: "rtsp_noauth", Level: report.Caution, Points: 8, IP: item.IP.String(), Device: name})
 		case adbNoAuthPort:
 			findings = append(findings, report.Finding{ID: "adb_noauth", Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name})
 		}
@@ -892,6 +895,12 @@ func makeFindings(
 			finding.Message = i18n.T(lang, finding.ID, finding.Device)
 		}
 		if finding.ID == "adb_noauth" {
+			finding.Message = i18n.T(lang, finding.ID, finding.Device)
+		}
+	}
+	for i := range findings {
+		finding := &findings[i]
+		if finding.ID == "rtsp_noauth" {
 			finding.Message = i18n.T(lang, finding.ID, finding.Device)
 		}
 	}
