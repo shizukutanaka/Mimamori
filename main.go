@@ -664,7 +664,7 @@ func fetchDescriptions(ctx context.Context, client *http.Client, responses []ssd
 			continue
 		}
 		current, exists := selected[response.IP]
-		if !exists || (response.ST == "upnp:rootdevice" && current.ST != "upnp:rootdevice") {
+		if !exists || descriptionPriority(response) > descriptionPriority(current) {
 			selected[response.IP] = response
 		}
 	}
@@ -739,6 +739,19 @@ func fetchDescriptions(ctx context.Context, client *http.Client, responses []ssd
 		errs = append(errs, fmt.Errorf("description fetch time limit reached; %d devices not read", skipped))
 	}
 	return devices, errs
+}
+
+func descriptionPriority(response ssdp.Response) int {
+	switch {
+	case strings.Contains(strings.ToLower(response.ST), "urn:schemas-upnp-org:device:internetgatewaydevice:"):
+		return 3
+	case ssdp.IsGateway(response):
+		return 2
+	case response.ST == "upnp:rootdevice":
+		return 1
+	default:
+		return 0
+	}
 }
 
 func lookupDeviceNames(ctx context.Context, hosts []netip.Addr) map[netip.Addr]string {
