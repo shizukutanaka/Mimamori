@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -684,6 +685,42 @@ func TestSanitizeName(t *testing.T) {
 	}, nil)
 	if name != "Brand Model" {
 		t.Fatalf("deviceName() = %q, want sanitized manufacturer and model", name)
+	}
+}
+
+func TestStripUnsafeRunes(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "removes controls and bidi overrides",
+			input: "XML syntax error on line 1: invalid XML name: a\u009b8m\u202eevil\x1b",
+			want:  "XML syntax error on line 1: invalid XML name: a8mevil",
+		},
+		{
+			name:  "preserves spaces and Japanese",
+			input: "家の device name と 通常のスペース",
+			want:  "家の device name と 通常のスペース",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := stripUnsafeRunes(test.input); got != test.want {
+				t.Fatalf("stripUnsafeRunes(%q) = %q, want %q", test.input, got, test.want)
+			}
+		})
+	}
+}
+
+func TestPortMappingWarningSeparatesJoinedErrors(t *testing.T) {
+	err := errors.Join(
+		errors.New("WANIPConnection: HTTP 500"),
+		errors.New("WANPPPConnection: HTTP 500"),
+	)
+	if got := portMappingWarning(err); !strings.Contains(got, "HTTP 500; WANPPPConnection:") {
+		t.Fatalf("portMappingWarning() = %q, want semicolon between joined errors", got)
 	}
 }
 

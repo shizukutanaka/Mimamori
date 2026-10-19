@@ -228,13 +228,13 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 	httpClient := newUPnPHTTPClient()
 	descriptions, descriptionErrors := fetchDescriptions(ctx, httpClient, discovery.responses)
 	for _, err := range descriptionErrors {
-		fmt.Fprintf(stderr, "warning: cannot read a device description: %v\n", err)
+		fmt.Fprintf(stderr, "warning: cannot read a device description: %s\n", stripUnsafeRunes(err.Error()))
 	}
 	incomplete = arp.err != nil || gateway.err != nil || discovery.err != nil || wifiCheck.err != nil || len(descriptionErrors) > 0
 	wifiFs := wifiFindings(wifiCheck.security, lang)
 	portMappings, portMappingQueryRan, portMappingErr := fetchPortMappings(ctx, httpClient, gatewayIP, discovery.responses, descriptions)
 	if portMappingErr != nil {
-		fmt.Fprintf(stderr, "warning: cannot read the router's port forwarding list: %v\n", portMappingErr)
+		fmt.Fprintf(stderr, "warning: cannot read the router's port forwarding list: %s\n", portMappingWarning(portMappingErr))
 		incomplete = true
 	}
 
@@ -745,14 +745,22 @@ func deviceName(
 	return ip.String()
 }
 
-func sanitizeName(s string) string {
-	filtered := strings.Map(func(r rune) rune {
+func portMappingWarning(err error) string {
+	return stripUnsafeRunes(strings.ReplaceAll(err.Error(), "\n", "; "))
+}
+
+func stripUnsafeRunes(s string) string {
+	return strings.Map(func(r rune) rune {
 		if unicode.IsControl(r) || r >= 0x200B && r <= 0x200F ||
 			r >= 0x202A && r <= 0x202E || r >= 0x2066 && r <= 0x2069 || r == 0xFEFF {
 			return -1
 		}
 		return r
 	}, s)
+}
+
+func sanitizeName(s string) string {
+	filtered := stripUnsafeRunes(s)
 	name := strings.Join(strings.Fields(filtered), " ")
 	runes := []rune(name)
 	if len(runes) > 64 {
