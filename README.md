@@ -2,7 +2,7 @@
 
 Mimamori answers a simple question: **“Is my home network safe right now?”** It looks for a few high-impact risks and explains what to do, rather than presenting packet details. It is a single static Go binary for Windows, macOS, and Linux; it needs no administrator/root access. It also checks whether another private address uses the router's MAC address, a possible sign of ARP spoofing.
 
-It checks devices visible in the local neighbor table, the default gateway, UPnP device descriptions, a small set of risky services (Telnet, FTP, VNC, and Android Debug Bridge (ADB) on TCP port 5555), and the connected Wi-Fi security using read-only operating-system tools. It also tries those risky-service ports on every address in the home subnet (up to 254), covering devices this PC has not talked to; it only attempts connections and changes nothing. Router UPnP port forwards are read with a read-only query. The score ranges from 0 to 100; findings explain the recommended fix and points recovered.
+It checks devices visible in the local neighbor table, the default gateway, UPnP device descriptions, and the connected Wi-Fi security using read-only operating-system tools. On every address in the home subnet (up to 254), including devices this PC has not talked to, it checks a small set of risky services: Telnet (TCP 23/2323), FTP (21), VNC (5900), Android Debug Bridge (ADB, 5555), RTSP cameras (554), and MQTT brokers (1883). For FTP, VNC, ADB, RTSP, and MQTT, it then sends one standard request without a password to see whether the service lets anyone in (FTP's anonymous login, a VNC or ADB handshake, an RTSP `DESCRIBE`, or an MQTT `CONNECT`). It never guesses passwords, opens files, watches video, or sends commands, and it changes nothing. Router UPnP port forwards are read with a read-only query, and devices whose UPnP description reports a known-vulnerable libupnp or MiniUPnPd version are flagged. The score ranges from 0 to 100; findings explain the recommended fix and points recovered.
 
 Mimamori never changes settings, contacts the Internet, or sends telemetry. Network discovery and checks stay on the private LAN. Its only persistent data is a local device-history file, used to report newly seen devices.
 
@@ -88,7 +88,7 @@ To add a language, add a catalog file in `internal/i18n` and list its code in `S
 
 Mimamori は「今、家のネットワークは安全だろうか？」という疑問に答える診断ツールです。通信の細かな情報ではなく、特に注意が必要な状態と対処方法をわかりやすく伝えます。Windows・macOS・Linux で動く、管理者権限がいらない単一の Go バイナリです。ルーターと同じ MAC アドレスを使う別のプライベート IP アドレスがないかも確認し、ARP スプーフィングの兆候を調べます。
 
-近くで確認できる機器、標準ゲートウェイ、UPnP の機器情報、危険につながりやすい Telnet・FTP・VNC・Android Debug Bridge（ADB、TCP 5555）の入口に加え、OS の機能だけを使って接続中 Wi-Fi の安全方式も読み取り専用で確認します。さらに、自宅サブネット内の全アドレス（最大 254 件）にも危険なサービスのポートへの接続を試み、この PC と通信したことがない機器も確認します。接続を試みるだけで、設定は変更しません。ルーターの UPnP ポート転送も読み取り専用の問い合わせで調べます。点数は 0〜100 点で、見つかった問題ごとに対処方法と回復する点数を表示します。
+近くで確認できる機器、標準ゲートウェイ、UPnP の機器情報に加え、OS の機能だけを使って接続中 Wi-Fi の安全方式も読み取り専用で確認します。さらに、自宅サブネット内の全アドレス（最大 254 件）について、この PC と通信したことがない機器も含め、危険につながりやすいサービスの入口を確認します。対象は Telnet（TCP 23・2323）、FTP（21）、VNC（5900）、Android Debug Bridge（ADB、5555）、防犯カメラの RTSP（554）、スマートホームの MQTT（1883）です。FTP・VNC・ADB・RTSP・MQTT では、パスワードなしで誰でも使える状態かを確かめるため、標準の手順で 1 回だけ問い合わせます（FTP の匿名ログイン、VNC・ADB の接続開始、RTSP の `DESCRIBE`、MQTT の `CONNECT`）。パスワードを推測したり、ファイルや映像を開いたり、操作の命令を送ったりはせず、設定も変更しません。ルーターの UPnP ポート転送も読み取り専用の問い合わせで調べ、既知の脆弱性がある古い libupnp・MiniUPnPd を使う機器も知らせます。点数は 0〜100 点で、見つかった問題ごとに対処方法と回復する点数を表示します。
 
 設定を変更せず、インターネットへ接続せず、利用状況も送信しません。機器の確認は家のネットワーク内だけで行います。保存するのは、新しい機器を次回から知らせるための機器履歴ファイルだけです。
 
