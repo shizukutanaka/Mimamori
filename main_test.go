@@ -579,6 +579,22 @@ func TestPortForwardFindings(t *testing.T) {
 			wantID: "port_forward_risky", wantLevel: report.Danger, wantCount: 1, wantPort: 1984, wantName: "Home Assistant",
 		},
 		{
+			name: "unrestricted TCP Node-RED editor port is risky",
+			mappings: []ssdp.PortMapping{{
+				ExternalPort: 1880, Protocol: "TCP", InternalPort: 1880, InternalClient: internalIP.String(), Enabled: true,
+			}},
+			names:  map[netip.Addr]string{internalIP: "Node-RED"},
+			wantID: "port_forward_risky", wantLevel: report.Danger, wantCount: 1, wantPort: 1880, wantName: "Node-RED",
+		},
+		{
+			name: "UDP Node-RED editor port is caution",
+			mappings: []ssdp.PortMapping{{
+				ExternalPort: 1880, Protocol: "UDP", InternalPort: 1880, InternalClient: internalIP.String(), Enabled: true,
+			}},
+			names:  map[netip.Addr]string{internalIP: "Node-RED"},
+			wantID: "port_forward", wantLevel: report.Caution, wantCount: 1, wantPort: 1880, wantName: "Node-RED",
+		},
+		{
 			name: "UDP RTSP port is not risky",
 			mappings: []ssdp.PortMapping{{
 				ExternalPort: 554, Protocol: "UDP", InternalPort: 554, InternalClient: internalIP.String(), Enabled: true,
