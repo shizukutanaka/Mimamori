@@ -10,6 +10,8 @@ import (
 	"io"
 	"net/http"
 	"net/netip"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -52,6 +54,51 @@ func TestExitCode(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestLoadHistoryPathError(t *testing.T) {
+	t.Run("returns path error without creating a file", func(t *testing.T) {
+		tempDir := t.TempDir()
+		workingDir, err := os.Getwd()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chdir(tempDir); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if err := os.Chdir(workingDir); err != nil {
+				t.Errorf("restore working directory: %v", err)
+			}
+		})
+
+		wantErr := errors.New("no home")
+		_, existed, err := loadHistory("", wantErr)
+		if err != wantErr {
+			t.Fatalf("loadHistory() error = %v, want %v", err, wantErr)
+		}
+		if existed {
+			t.Fatal("loadHistory() reported history exists, want false")
+		}
+		entries, err := os.ReadDir(tempDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(entries) != 0 {
+			t.Fatalf("working directory contains files: %v", entries)
+		}
+	})
+
+	t.Run("missing file", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "missing.json")
+		_, existed, err := loadHistory(path, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if existed {
+			t.Fatal("loadHistory() reported history exists, want false")
+		}
+	})
 }
 
 func TestMakeFindings(t *testing.T) {

@@ -168,12 +168,11 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 		fmt.Fprintln(stderr, i18n.T(pre, "wait_negative"))
 		return earlyRunResult(1, pre, *jsonOutput)
 	}
+	var statePathErr error
 	if *statePath == "" {
-		var err error
-		*statePath, err = baseline.DefaultPath()
-		if err != nil {
-			fmt.Fprintf(stderr, "warning: cannot determine state path: %v\n", err)
-			return finish(1)
+		*statePath, statePathErr = baseline.DefaultPath()
+		if statePathErr != nil {
+			fmt.Fprintf(stderr, "warning: cannot determine state path: %v\n", statePathErr)
 		}
 	}
 
@@ -287,7 +286,7 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 	}
 	neighbors = homeNeighbors(neighbors, prefixes, gatewayIP)
 
-	store, existed, err := baseline.Load(*statePath)
+	store, existed, err := loadHistory(*statePath, statePathErr)
 	firstRun := !existed
 	loadState := historyLoadReady
 	if err != nil {
@@ -397,6 +396,13 @@ func exitCode(findings []report.Finding, loadState historyLoadState, historySave
 		return 1
 	}
 	return 0
+}
+
+func loadHistory(path string, pathErr error) (baseline.Store, bool, error) {
+	if pathErr != nil {
+		return baseline.Store{}, false, pathErr
+	}
+	return baseline.Load(path)
 }
 
 func printNoDeviceError(writer io.Writer, lang string, wifiErr error) {
