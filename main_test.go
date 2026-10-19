@@ -505,6 +505,22 @@ func TestPortForwardFindings(t *testing.T) {
 			wantID: "forward_camera", wantLevel: report.Danger, wantCount: 1, wantPort: 34567, wantName: "DVR",
 		},
 		{
+			name: "unrestricted TCP go2rtc RTSP port is camera danger",
+			mappings: []ssdp.PortMapping{{
+				ExternalPort: 8554, Protocol: "TCP", InternalPort: 8554, InternalClient: internalIP.String(), Enabled: true,
+			}},
+			names:  map[netip.Addr]string{internalIP: "Home Assistant"},
+			wantID: "forward_camera", wantLevel: report.Danger, wantCount: 1, wantPort: 8554, wantName: "Home Assistant",
+		},
+		{
+			name: "unrestricted TCP go2rtc API port is risky",
+			mappings: []ssdp.PortMapping{{
+				ExternalPort: 1984, Protocol: "TCP", InternalPort: 1984, InternalClient: internalIP.String(), Enabled: true,
+			}},
+			names:  map[netip.Addr]string{internalIP: "Home Assistant"},
+			wantID: "port_forward_risky", wantLevel: report.Danger, wantCount: 1, wantPort: 1984, wantName: "Home Assistant",
+		},
+		{
 			name: "UDP RTSP port is not risky",
 			mappings: []ssdp.PortMapping{{
 				ExternalPort: 554, Protocol: "UDP", InternalPort: 554, InternalClient: internalIP.String(), Enabled: true,
