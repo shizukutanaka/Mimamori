@@ -75,6 +75,11 @@ func TestParseNmcli(t *testing.T) {
 		{name: "WPA3", text: "yes:WPA3\n", want: Modern},
 		{name: "WPA1 mixed with WPA2 remains weak", text: "yes:WPA1 WPA2\n", want: WPA1orTKIP},
 		{name: "WPA2 mixed with WPA3 is modern", text: "yes:WPA2 WPA3\n", want: Modern},
+		{name: "multiple active networks selects weaker one", text: "yes:WPA2\nyes:WEP\n", want: WEP},
+		{name: "active open interface overrides WPA2", text: "yes:WPA2\nyes:\n", want: Open},
+		{name: "mixed WPA1 and WPA2 on another interface stays weak", text: "yes:WPA3\nyes:WPA1 WPA2\n", want: WPA1orTKIP},
+		{name: "unknown active security is ignored", text: "yes:OWE\nyes:WPA2\n", want: Modern},
+		{name: "inactive WEP does not affect result", text: "no:WEP\n", want: Unknown},
 		{name: "localized active value is not accepted", text: "はい:WPA2\n", want: Unknown},
 		{name: "no active network", text: "no:WPA2\n", want: Unknown},
 	}
