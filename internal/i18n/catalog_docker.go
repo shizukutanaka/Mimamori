@@ -18,7 +18,7 @@ var dockerMessages = map[string]map[string]string{
 		"docker_noauth_fix": "請停止公開未加密的 Docker 2375 連接埠。遠端使用時，請改用 TLS（連接埠 2376）或 SSH。",
 	},
 	"es": {
-		"docker_noauth":     "La API remota de Docker (puerto 2375) en %s no tiene contraseña. Cualquier persona de tu red puede ejecutar programas y tomar el control total del dispositivo.",
+		"docker_noauth":     "La API remota de Docker (puerto 2375) en %s no tiene contraseña. Cualquier persona de su red puede ejecutar programas y tomar el control total del dispositivo.",
 		"docker_noauth_fix": "Deje de exponer el puerto 2375 de Docker sin cifrar. Para el acceso remoto, utilice TLS (puerto 2376) o SSH.",
 	},
 	"pt": {
