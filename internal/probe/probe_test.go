@@ -32,6 +32,44 @@ func TestScanFindsOpenPort(t *testing.T) {
 	}
 }
 
+func TestAliveClassifiesDialResults(t *testing.T) {
+	accepted := netip.MustParseAddr("192.0.2.10")
+	refused := netip.MustParseAddr("192.0.2.11")
+	timedOut := netip.MustParseAddr("192.0.2.12")
+	var peers []net.Conn
+	attempts := make(map[string]int)
+	defer func() { closePipePeers(peers) }()
+	dial := func(_ context.Context, address string) (net.Conn, error) {
+		attempts[address]++
+		switch address {
+		case scanAddress(accepted, 80):
+			return pipeConnection(&peers), nil
+		case scanAddress(refused, 80):
+			return nil, errors.New("connection refused")
+		case scanAddress(timedOut, 80):
+			return nil, fakeTimeoutError{}
+		default:
+			return nil, errors.New("unexpected address")
+		}
+	}
+
+	got := alive(context.Background(), []netip.Addr{accepted, refused, timedOut}, 80, 700*time.Millisecond, 1, dial)
+	if len(got) != 2 {
+		t.Fatalf("alive() returned %v, want accepted and refused hosts", got)
+	}
+	for _, host := range []netip.Addr{accepted, refused} {
+		if _, ok := got[host]; !ok {
+			t.Errorf("alive() did not include %s", host)
+		}
+	}
+	if _, ok := got[timedOut]; ok {
+		t.Errorf("alive() included timed-out host %s", timedOut)
+	}
+	for _, host := range []netip.Addr{accepted, refused, timedOut} {
+		assertAttemptCount(t, attempts, scanAddress(host, 80), 1)
+	}
+}
+
 func TestScanRetriesTimedOutPortsOnAliveHost(t *testing.T) {
 	host := netip.MustParseAddr("192.0.2.1")
 	attempts := make(map[string]int)
