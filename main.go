@@ -225,6 +225,7 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 		fmt.Fprintf(stderr, "warning: cannot determine Wi-Fi security: %v\n", wifiCheck.err)
 	}
 
+	discovery.responses = withoutLocalResponses(discovery.responses, lan.LocalAddresses())
 	httpClient := newUPnPHTTPClient()
 	descriptions, descriptionErrors := fetchDescriptions(ctx, httpClient, discovery.responses, gatewayIP)
 	for _, err := range descriptionErrors {
