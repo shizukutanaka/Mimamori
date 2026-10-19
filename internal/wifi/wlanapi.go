@@ -132,7 +132,11 @@ func advertisesWPA1(elements, ssid []byte) bool {
 		switch {
 		case id == informationElementSSID:
 			if !bytes.Equal(body, ssid) {
-				return false
+				for _, value := range body {
+					if value != 0 {
+						return false
+					}
+				}
 			}
 			ssidMatched = true
 		case id == informationElementVendor && length >= 4 && bytes.Equal(body[:4], wpa1VendorPrefix[:]):

@@ -89,7 +89,23 @@ func TestBSSAdvertisesWPA1(t *testing.T) {
 			},
 		},
 		{
-			name:  "different SSID element",
+			name:  "empty hidden SSID with WPA1",
+			items: 1,
+			entries: []bssTestEntry{
+				{bssid: bssid, elements: concat([]byte{informationElementSSID, 0}, wpa1Element)},
+			},
+			want: true,
+		},
+		{
+			name:  "zero-filled hidden SSID with WPA1",
+			items: 1,
+			entries: []bssTestEntry{
+				{bssid: bssid, elements: concat([]byte{informationElementSSID, 3, 0, 0, 0}, wpa1Element)},
+			},
+			want: true,
+		},
+		{
+			name:  "different nonempty SSID element",
 			items: 1,
 			entries: []bssTestEntry{
 				{bssid: bssid, elements: concat([]byte{informationElementSSID, 5, 'O', 't', 'h', 'e', 'r'}, wpa1Element)},
