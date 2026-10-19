@@ -107,7 +107,7 @@ func PortMappings(ctx context.Context, client *http.Client, controlURL, serviceT
 				Protocol:       strings.TrimSpace(entry.Protocol),
 				InternalPort:   entry.InternalPort,
 				InternalClient: strings.TrimSpace(entry.InternalClient),
-				Enabled:        enabled == "1" || strings.EqualFold(enabled, "true"),
+				Enabled:        enabled == "1" || strings.EqualFold(enabled, "true") || strings.EqualFold(enabled, "yes"),
 				Description:    entry.Description,
 			})
 			continue
