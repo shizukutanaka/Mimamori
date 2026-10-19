@@ -384,3 +384,28 @@ func TestSupplicantInterfaces(t *testing.T) {
 		}
 	}
 }
+
+func TestNmcliAllowsTKIP(t *testing.T) {
+	tests := []struct {
+		name string
+		text string
+		want bool
+	}{
+		{name: "pair and group TKIP", text: "yes:pair_tkip pair_ccmp group_tkip psk", want: true},
+		{name: "group TKIP", text: "yes:pair_ccmp group_tkip psk", want: true},
+		{name: "CCMP only", text: "yes:pair_ccmp group_ccmp psk"},
+		{name: "WPA3 transition", text: "yes:pair_ccmp group_ccmp psk sae"},
+		{name: "none", text: "yes:(none)"},
+		{name: "inactive TKIP", text: "no:pair_tkip group_tkip psk"},
+		{name: "second active network has group TKIP", text: "yes:pair_ccmp group_ccmp psk\nyes:pair_ccmp group_tkip psk", want: true},
+		{name: "CRLF", text: "no:pair_ccmp group_ccmp psk\r\nyes:pair_ccmp group_tkip psk\r", want: true},
+		{name: "empty"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := NmcliAllowsTKIP(test.text); got != test.want {
+				t.Fatalf("NmcliAllowsTKIP() = %t, want %t", got, test.want)
+			}
+		})
+	}
+}
