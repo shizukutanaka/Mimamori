@@ -1917,7 +1917,7 @@ func TestFetchDescriptionsPrefersGatewayDescription(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			devices, errs := fetchDescriptions(context.Background(), client, test.responses)
+			devices, errs := fetchDescriptions(context.Background(), client, test.responses, gateway)
 			description, ok := devices[test.ip]
 			if !ok {
 				t.Fatalf("fetchDescriptions() has no device for %s; errors: %v", test.ip, errs)
