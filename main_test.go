@@ -663,6 +663,32 @@ func TestSanitizeName(t *testing.T) {
 	}
 }
 
+func TestStripUnsafeRunes(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "removes controls and bidi overrides",
+			input: "XML syntax error on line 1: invalid XML name: a\u009b8m\u202eevil\x1b",
+			want:  "XML syntax error on line 1: invalid XML name: a8mevil",
+		},
+		{
+			name:  "preserves spaces and Japanese",
+			input: "家の device name と 通常のスペース",
+			want:  "家の device name と 通常のスペース",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := stripUnsafeRunes(test.input); got != test.want {
+				t.Fatalf("stripUnsafeRunes(%q) = %q, want %q", test.input, got, test.want)
+			}
+		})
+	}
+}
+
 func TestDeviceNamePrecedence(t *testing.T) {
 	ip := netip.MustParseAddr("192.168.1.20")
 	router := netip.MustParseAddr("192.168.1.1")
@@ -1300,32 +1326,6 @@ func TestWriteOutputIncludesIncompleteJSON(t *testing.T) {
 	}
 	if result["incomplete"] != true {
 		t.Fatalf("JSON incomplete = %#v, want true", result["incomplete"])
-	}
-}
-
-func TestStripUnsafeRunes(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-		want  string
-	}{
-		{
-			name:  "removes controls and bidi overrides",
-			input: "XML syntax error on line 1: invalid XML name: a\u009b8m\u202eevil\x1b",
-			want:  "XML syntax error on line 1: invalid XML name: a8mevil",
-		},
-		{
-			name:  "preserves spaces and Japanese",
-			input: "家の device name と 通常のスペース",
-			want:  "家の device name と 通常のスペース",
-		},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			if got := stripUnsafeRunes(test.input); got != test.want {
-				t.Fatalf("stripUnsafeRunes(%q) = %q, want %q", test.input, got, test.want)
-			}
-		})
 	}
 }
 
