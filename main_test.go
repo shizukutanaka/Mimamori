@@ -634,113 +634,6 @@ func (roundTripper roundTripperFunc) RoundTrip(request *http.Request) (*http.Res
 	return roundTripper(request)
 }
 
-func TestFetchDescriptionsPrefersGatewayDescription(t *testing.T) {
-	gateway := netip.MustParseAddr("192.168.1.1")
-	secondary := netip.MustParseAddr("192.168.1.50")
-	response := func(ip netip.Addr, st string, port string) ssdp.Response {
-		return ssdp.Response{
-			IP:       ip,
-			ST:       st,
-			Location: fmt.Sprintf("http://%s:%s/rootDesc.xml", ip, port),
-		}
-	}
-	igdST := "urn:schemas-upnp-org:device:InternetGatewayDevice:1"
-	tests := []struct {
-		name           string
-		ip             netip.Addr
-		responses      []ssdp.Response
-		wantLocation   string
-		wantGatewayIGD bool
-	}{
-		{
-			name: "gateway IGD beats earlier media root device",
-			ip:   gateway,
-			responses: []ssdp.Response{
-				response(gateway, "upnp:rootdevice", "8200"),
-				response(gateway, "upnp:rootdevice", "5000"),
-				response(gateway, igdST, "5000"),
-			},
-			wantLocation:   "http://192.168.1.1:5000/rootDesc.xml",
-			wantGatewayIGD: true,
-		},
-		{
-			name: "UPnP IGD beats DSL Forum IGD",
-			ip:   gateway,
-			responses: []ssdp.Response{
-				response(gateway, "urn:dslforum-org:device:InternetGatewayDevice:1", "49443"),
-				response(gateway, igdST, "5000"),
-			},
-			wantLocation:   "http://192.168.1.1:5000/rootDesc.xml",
-			wantGatewayIGD: true,
-		},
-		{
-			name: "root device beats UUID response for non-gateway",
-			ip:   secondary,
-			responses: []ssdp.Response{
-				response(secondary, "uuid:device-1", "8200"),
-				response(secondary, "upnp:rootdevice", "5000"),
-			},
-			wantLocation: "http://192.168.1.50:5000/rootDesc.xml",
-		},
-	}
-
-	mediaDescription := `<root><device>
-<deviceType>urn:schemas-upnp-org:device:MediaServer:1</deviceType>
-<friendlyName>Media Server</friendlyName>
-</device></root>`
-	igdDescription := `<root><device>
-<deviceType>urn:schemas-upnp-org:device:InternetGatewayDevice:1</deviceType>
-<deviceList><device><deviceType>urn:schemas-upnp-org:device:WANDevice:1</deviceType>
-<deviceList><device><deviceType>urn:schemas-upnp-org:device:WANConnectionDevice:1</deviceType>
-<serviceList><service>
-<serviceType>urn:schemas-upnp-org:service:WANIPConnection:1</serviceType>
-<controlURL>/ctl/IPConn</controlURL>
-</service></serviceList>
-</device></deviceList></device></deviceList>
-</device></root>`
-	dslForumDescription := `<root><device>
-<deviceType>urn:dslforum-org:device:InternetGatewayDevice:1</deviceType>
-<friendlyName>DSL Forum Device</friendlyName>
-</device></root>`
-
-	client := &http.Client{Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
-		var body string
-		switch request.URL.Port() {
-		case "8200":
-			body = mediaDescription
-		case "5000":
-			body = igdDescription
-		case "49443":
-			body = dslForumDescription
-		default:
-			t.Errorf("unexpected description URL %q", request.URL)
-			body = mediaDescription
-		}
-		return &http.Response{
-			StatusCode: http.StatusOK,
-			Header:     make(http.Header),
-			Body:       io.NopCloser(strings.NewReader(body)),
-			Request:    request,
-		}, nil
-	})}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			devices, errs := fetchDescriptions(context.Background(), client, test.responses)
-			description, ok := devices[test.ip]
-			if !ok {
-				t.Fatalf("fetchDescriptions() has no device for %s; errors: %v", test.ip, errs)
-			}
-			if description.Location != test.wantLocation {
-				t.Fatalf("description location = %q, want %q", description.Location, test.wantLocation)
-			}
-			if test.wantGatewayIGD && (!description.Device.IsIGD() || len(description.Device.WANConnections()) != 1) {
-				t.Fatalf("gateway description = %#v, want IGD with one WAN connection", description.Device)
-			}
-		})
-	}
-}
-
 func TestRouterUPnPAttribution(t *testing.T) {
 	gateway := netip.MustParseAddr("192.168.1.1")
 	secondary := netip.MustParseAddr("192.168.1.2")
@@ -1861,6 +1754,113 @@ func TestPrintNoDeviceError(t *testing.T) {
 			}
 			if got := output.String(); got != want {
 				t.Fatalf("printNoDeviceError() = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+func TestFetchDescriptionsPrefersGatewayDescription(t *testing.T) {
+	gateway := netip.MustParseAddr("192.168.1.1")
+	secondary := netip.MustParseAddr("192.168.1.50")
+	response := func(ip netip.Addr, st string, port string) ssdp.Response {
+		return ssdp.Response{
+			IP:       ip,
+			ST:       st,
+			Location: fmt.Sprintf("http://%s:%s/rootDesc.xml", ip, port),
+		}
+	}
+	igdST := "urn:schemas-upnp-org:device:InternetGatewayDevice:1"
+	tests := []struct {
+		name           string
+		ip             netip.Addr
+		responses      []ssdp.Response
+		wantLocation   string
+		wantGatewayIGD bool
+	}{
+		{
+			name: "gateway IGD beats earlier media root device",
+			ip:   gateway,
+			responses: []ssdp.Response{
+				response(gateway, "upnp:rootdevice", "8200"),
+				response(gateway, "upnp:rootdevice", "5000"),
+				response(gateway, igdST, "5000"),
+			},
+			wantLocation:   "http://192.168.1.1:5000/rootDesc.xml",
+			wantGatewayIGD: true,
+		},
+		{
+			name: "UPnP IGD beats DSL Forum IGD",
+			ip:   gateway,
+			responses: []ssdp.Response{
+				response(gateway, "urn:dslforum-org:device:InternetGatewayDevice:1", "49443"),
+				response(gateway, igdST, "5000"),
+			},
+			wantLocation:   "http://192.168.1.1:5000/rootDesc.xml",
+			wantGatewayIGD: true,
+		},
+		{
+			name: "root device beats UUID response for non-gateway",
+			ip:   secondary,
+			responses: []ssdp.Response{
+				response(secondary, "uuid:device-1", "8200"),
+				response(secondary, "upnp:rootdevice", "5000"),
+			},
+			wantLocation: "http://192.168.1.50:5000/rootDesc.xml",
+		},
+	}
+
+	mediaDescription := `<root><device>
+<deviceType>urn:schemas-upnp-org:device:MediaServer:1</deviceType>
+<friendlyName>Media Server</friendlyName>
+</device></root>`
+	igdDescription := `<root><device>
+<deviceType>urn:schemas-upnp-org:device:InternetGatewayDevice:1</deviceType>
+<deviceList><device><deviceType>urn:schemas-upnp-org:device:WANDevice:1</deviceType>
+<deviceList><device><deviceType>urn:schemas-upnp-org:device:WANConnectionDevice:1</deviceType>
+<serviceList><service>
+<serviceType>urn:schemas-upnp-org:service:WANIPConnection:1</serviceType>
+<controlURL>/ctl/IPConn</controlURL>
+</service></serviceList>
+</device></deviceList></device></deviceList>
+</device></root>`
+	dslForumDescription := `<root><device>
+<deviceType>urn:dslforum-org:device:InternetGatewayDevice:1</deviceType>
+<friendlyName>DSL Forum Device</friendlyName>
+</device></root>`
+
+	client := &http.Client{Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
+		var body string
+		switch request.URL.Port() {
+		case "8200":
+			body = mediaDescription
+		case "5000":
+			body = igdDescription
+		case "49443":
+			body = dslForumDescription
+		default:
+			t.Errorf("unexpected description URL %q", request.URL)
+			body = mediaDescription
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Request:    request,
+		}, nil
+	})}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			devices, errs := fetchDescriptions(context.Background(), client, test.responses)
+			description, ok := devices[test.ip]
+			if !ok {
+				t.Fatalf("fetchDescriptions() has no device for %s; errors: %v", test.ip, errs)
+			}
+			if description.Location != test.wantLocation {
+				t.Fatalf("description location = %q, want %q", description.Location, test.wantLocation)
+			}
+			if test.wantGatewayIGD && (!description.Device.IsIGD() || len(description.Device.WANConnections()) != 1) {
+				t.Fatalf("gateway description = %#v, want IGD with one WAN connection", description.Device)
 			}
 		})
 	}
