@@ -351,16 +351,23 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 		store.Prune(now, 30*24*time.Hour, lan.IsRandomizedMAC)
 		if err := baseline.Save(*statePath, store); err != nil {
 			fmt.Fprintf(stderr, "warning: cannot save device history: %v\n", err)
-			return finish(1)
+			return finish(exitCode(findings, true))
 		}
 	}
 
+	return finish(exitCode(findings, false))
+}
+
+func exitCode(findings []report.Finding, historySaveFailed bool) int {
 	for _, finding := range findings {
 		if finding.Level == report.Danger {
-			return finish(2)
+			return 2
 		}
 	}
-	return finish(0)
+	if historySaveFailed {
+		return 1
+	}
+	return 0
 }
 
 func printNoDeviceError(writer io.Writer, lang string, wifiErr error) {
