@@ -30,23 +30,34 @@ func homePrefixes(prefixes []netip.Prefix, gateway netip.Addr) []netip.Prefix {
 	return matchingPrefixes
 }
 
-func homeNeighbors(neighbors []lan.Neighbor, prefixes []netip.Prefix, gateway netip.Addr) []lan.Neighbor {
-	if !gateway.IsValid() || !gateway.Is4() {
-		return neighbors
+func scanScope(neighbors []lan.Neighbor, prefixes []netip.Prefix, gateway netip.Addr) []netip.Prefix {
+	if !gatewayInNeighbors(neighbors, gateway) {
+		return nil
 	}
+	return homePrefixes(prefixes, gateway)
+}
 
-	gatewayInNeighbors := false
+func scanSweepHosts(prefixes, scope []netip.Prefix, gateway netip.Addr) []netip.Addr {
+	if len(scope) > 0 {
+		prefixes = scope
+	}
+	return lan.SweepHosts(prefixes, gateway)
+}
+
+func gatewayInNeighbors(neighbors []lan.Neighbor, gateway netip.Addr) bool {
+	if !gateway.IsValid() || !gateway.Is4() {
+		return false
+	}
 	for _, neighbor := range neighbors {
 		if neighbor.IP == gateway {
-			gatewayInNeighbors = true
-			break
+			return true
 		}
 	}
-	if !gatewayInNeighbors {
-		return neighbors
-	}
+	return false
+}
 
-	matchingPrefixes := homePrefixes(prefixes, gateway)
+func homeNeighbors(neighbors []lan.Neighbor, prefixes []netip.Prefix, gateway netip.Addr) []lan.Neighbor {
+	matchingPrefixes := scanScope(neighbors, prefixes, gateway)
 	if len(matchingPrefixes) == 0 {
 		return neighbors
 	}

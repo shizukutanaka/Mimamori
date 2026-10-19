@@ -247,14 +247,14 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 			prefixesFailed = true
 		}
 	}
-	scope := homePrefixes(prefixes, gatewayIP)
+	scope := scanScope(arp.neighbors, prefixes, gatewayIP)
 	if prefixesFailed {
 		scope = nil
 	}
 	initialHosts := collectHosts(arp.neighbors, gatewayIP, discovery.responses, scope)
 	scanTargets := initialHosts
 	if gatewayIP.IsValid() {
-		scanTargets = mergeHosts(initialHosts, lan.SweepHosts(prefixes, gatewayIP))
+		scanTargets = mergeHosts(initialHosts, scanSweepHosts(prefixes, scope, gatewayIP))
 	}
 	opened := markSMB1(ctx, probe.Scan(ctx, scanTargets, []int{23, 2323, 21, 5900, 5555, 445, 554, 1883}, 700*time.Millisecond, 128))
 	opened = markUnauthenticatedRTSP(ctx, opened)
