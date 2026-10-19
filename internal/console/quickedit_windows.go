@@ -3,6 +3,8 @@
 package console
 
 import (
+	"os"
+	"os/signal"
 	"syscall"
 	"unsafe"
 )
@@ -33,7 +35,14 @@ func DisableQuickEdit() func() {
 		return func() {}
 	}
 
-	return func() {
+	restore := func() {
 		_, _, _ = setConsoleMode.Call(handle, uintptr(mode))
+	}
+	interrupts := make(chan os.Signal, 1)
+	signal.Notify(interrupts, os.Interrupt)
+	stop := restoreOnInterrupt(interrupts, restore, func() { os.Exit(controlCExitCode()) })
+	return func() {
+		signal.Stop(interrupts)
+		stop()
 	}
 }
