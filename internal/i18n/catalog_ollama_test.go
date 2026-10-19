@@ -25,20 +25,20 @@ func TestOllamaCatalogCoverage(t *testing.T) {
 		if !strings.Contains(message, "Ollama") || !strings.Contains(message, "11434") {
 			t.Errorf("%s ollama_open must contain Ollama and 11434", lang)
 		}
-		if !strings.Contains(fix, "OLLAMA_HOST") {
-			t.Errorf("%s ollama_open_fix must contain OLLAMA_HOST", lang)
+		if !strings.Contains(fix, "OLLAMA_HOST") || !strings.Contains(fix, "Expose Ollama to the network") {
+			t.Errorf("%s ollama_open_fix must contain OLLAMA_HOST and the desktop toggle label", lang)
 		}
 	}
 	if got := T("en", "ollama_open", "192.168.1.5"); got != "Ollama (local AI, port 11434) on 192.168.1.5 is open to your network, and Ollama has no password. Anyone at home can run models on this computer's GPU, delete models, and use cloud models on its ollama.com account if it is signed in." {
 		t.Errorf("English Ollama message = %q", got)
 	}
-	if got := T("en", "ollama_open_fix"); got != "If no other device needs it, set OLLAMA_HOST to 127.0.0.1:11434 (for Docker, publish with -p 127.0.0.1:11434:11434)." {
+	if got := T("en", "ollama_open_fix"); got != "If no other device needs it, set OLLAMA_HOST to 127.0.0.1:11434 (for Docker, publish with -p 127.0.0.1:11434:11434). In the Windows or Mac app, turn off \"Expose Ollama to the network\" in Settings." {
 		t.Errorf("English Ollama fix = %q", got)
 	}
 	if got := T("ja", "ollama_open", "居間"); got != "「居間」の Ollama（ローカルの AI、11434番）は、合言葉のしくみがないまま家のネットワークに開いています。家の誰でも、この PC の GPU で AI を動かしたり、モデルを消したりできます。ollama.com にサインインしていれば、その枠のクラウドのモデルも使えます。" {
 		t.Errorf("Japanese Ollama message = %q", got)
 	}
-	if got := T("ja", "ollama_open_fix"); got != "ほかの機器から使わないなら、OLLAMA_HOST を 127.0.0.1:11434 にしてください（Docker なら -p 127.0.0.1:11434:11434）。" {
+	if got := T("ja", "ollama_open_fix"); got != "ほかの機器から使わないなら、OLLAMA_HOST を 127.0.0.1:11434 にしてください（Docker なら -p 127.0.0.1:11434:11434）。Windows・Mac のアプリなら、設定の「Expose Ollama to the network」を切ってください。" {
 		t.Errorf("Japanese Ollama fix = %q", got)
 	}
 }
