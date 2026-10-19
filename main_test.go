@@ -1464,7 +1464,7 @@ func TestRenderTextSkipsPortsWhenNoTargets(t *testing.T) {
 func TestWriteOutputOmitsCheckedLineFromJSON(t *testing.T) {
 	var buffer bytes.Buffer
 	result := output{
-		Checks:  checkedSummary{Ports: true, PortForwards: true, WiFi: true},
+		Checks:  checkedSummary{Ports: true},
 		Devices: []deviceOutput{{}},
 	}
 	if err := writeOutput(&buffer, result, true, "en"); err != nil {
@@ -1477,8 +1477,29 @@ func TestWriteOutputOmitsCheckedLineFromJSON(t *testing.T) {
 	if err := json.Unmarshal(buffer.Bytes(), &encoded); err != nil {
 		t.Fatal(err)
 	}
-	if _, exists := encoded["checks"]; exists {
-		t.Fatal("JSON output includes the rendering-only checks field")
+	checked, ok := encoded["checked"].(map[string]any)
+	if !ok {
+		t.Fatalf("JSON checked = %#v, want object", encoded["checked"])
+	}
+	if len(checked) != 3 {
+		t.Fatalf("JSON checked has %d keys, want exactly 3: %#v", len(checked), checked)
+	}
+	for _, field := range []struct {
+		name string
+		want bool
+	}{
+		{name: "ports", want: true},
+		{name: "port_forwards", want: false},
+		{name: "wifi", want: false},
+	} {
+		value, present := checked[field.name]
+		if !present {
+			t.Errorf("JSON checked is missing %q", field.name)
+			continue
+		}
+		if value != field.want {
+			t.Errorf("JSON checked.%s = %#v, want %t", field.name, value, field.want)
+		}
 	}
 }
 
