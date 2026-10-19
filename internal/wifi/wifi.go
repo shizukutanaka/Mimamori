@@ -79,6 +79,17 @@ func Current(ctx context.Context) (Security, error) {
 		if security == Unknown {
 			return wpaCliSecurity(commandContext)
 		}
+		if security == Modern {
+			flagsCommand := exec.CommandContext(commandContext, "nmcli", "-t", "-f", "ACTIVE,RSN-FLAGS", "dev", "wifi")
+			flagsCommand.Env = withLCAllC(os.Environ())
+			flagsOutput, err := flagsCommand.Output()
+			if commandContext.Err() != nil {
+				return Unknown, commandContext.Err()
+			}
+			if err == nil && NmcliAllowsTKIP(string(flagsOutput)) {
+				return WPA1orTKIP, nil
+			}
+		}
 		return security, nil
 	case "windows":
 		return ParseNetsh(string(output)), nil
@@ -302,6 +313,21 @@ func ParseWPACli(text string) Security {
 		return Modern
 	}
 	return Unknown
+}
+
+func NmcliAllowsTKIP(text string) bool {
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(strings.TrimSuffix(line, "\r"))
+		if !strings.HasPrefix(line, "yes:") {
+			continue
+		}
+		for _, flag := range strings.Fields(strings.TrimPrefix(line, "yes:")) {
+			if strings.EqualFold(flag, "pair_tkip") || strings.EqualFold(flag, "group_tkip") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func ParseNetsh(text string) Security {
