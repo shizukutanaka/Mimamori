@@ -53,6 +53,7 @@ type output struct {
 }
 
 type checkedSummary struct {
+	Ports        bool
 	PortForwards bool
 	WiFi         bool
 }
@@ -69,6 +70,10 @@ type runResult struct {
 	code  int
 	lang  string
 	pause bool
+}
+
+func earlyRunResult(code int, lang string, jsonMode bool) runResult {
+	return runResult{code: code, lang: lang, pause: !jsonMode}
 }
 
 type discoveryResult struct {
@@ -98,7 +103,9 @@ type descriptionResult struct {
 }
 
 func main() {
+	restoreQuickEdit := console.DisableQuickEdit()
 	result := run(os.Args[1:], os.Stdout, os.Stderr)
+	restoreQuickEdit()
 	if result.pause && console.ShouldPause() {
 		fmt.Fprint(os.Stdout, i18n.T(result.lang, "press_enter"))
 		_, _ = bufio.NewReader(os.Stdin).ReadString('\n')
@@ -107,14 +114,29 @@ func main() {
 }
 
 func run(args []string, stdout, stderr io.Writer) runResult {
+	return runWithEnv(args, stdout, stderr, os.Getenv)
+}
+
+func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) string) runResult {
 	flags := flag.NewFlagSet("mimamori", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	jsonOutput := flags.Bool("json", false, "write JSON output")
-	languageHelp := fmt.Sprintf("output language: auto or one of %s", strings.Join(i18n.Supported(), ", "))
-	language := flags.String("lang", "auto", languageHelp)
-	statePath := flags.String("state", "", "path to the local device history file")
-	wait := flags.Duration("wait", 3*time.Second, "time to listen for local UPnP devices")
-	showVersion := flags.Bool("version", false, "print version")
+	registeredFlags := registerRunFlags(flags)
+	jsonOutput := registeredFlags.jsonOutput
+	language := registeredFlags.language
+	statePath := registeredFlags.statePath
+	wait := registeredFlags.wait
+	showVersion := registeredFlags.showVersion
+	pre := preLanguage(args, getenv, flags)
+	flags.Lookup("json").Usage = i18n.T(pre, "flag_json")
+	languageHelp := i18n.T(pre, "flag_lang", strings.Join(i18n.Supported(), ", "))
+	flags.Lookup("lang").Usage = languageHelp
+	flags.Lookup("state").Usage = i18n.T(pre, "flag_state")
+	flags.Lookup("wait").Usage = i18n.T(pre, "flag_wait")
+	flags.Lookup("version").Usage = i18n.T(pre, "flag_version")
+	flags.Usage = func() {
+		fmt.Fprintln(stderr, i18n.T(pre, "usage_header"))
+		flags.PrintDefaults()
+	}
 	lang := ""
 	incomplete := false
 	localizedNoticeShown := false
@@ -123,27 +145,27 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 	}
 	if err := flags.Parse(args); err != nil {
 		if err == flag.ErrHelp {
-			return finish(0)
+			return earlyRunResult(0, pre, *jsonOutput)
 		}
-		return finish(1)
+		return earlyRunResult(1, pre, *jsonOutput)
 	}
 	if flags.NArg() != 0 {
-		fmt.Fprintf(stderr, "unexpected argument: %s\n", flags.Arg(0))
-		return finish(1)
+		fmt.Fprintln(stderr, i18n.T(pre, "unexpected_argument", flags.Arg(0)))
+		return earlyRunResult(1, pre, *jsonOutput)
 	}
 	if *showVersion {
 		fmt.Fprintf(stdout, "Mimamori %s\n", version)
-		return finish(0)
+		return earlyRunResult(0, pre, *jsonOutput)
 	}
-	resolvedLang, err := resolveLanguage(*language, os.Getenv)
+	resolvedLang, err := resolveLanguage(*language, getenv)
 	if err != nil {
-		fmt.Fprintln(stderr, err)
-		return finish(1)
+		fmt.Fprintln(stderr, i18n.T(pre, "invalid_lang", *language, strings.Join(i18n.Supported(), ", ")))
+		return earlyRunResult(1, pre, *jsonOutput)
 	}
 	lang = resolvedLang
 	if *wait < 0 {
-		fmt.Fprintln(stderr, "--wait cannot be negative")
-		return finish(1)
+		fmt.Fprintln(stderr, i18n.T(pre, "wait_negative"))
+		return earlyRunResult(1, pre, *jsonOutput)
 	}
 	if *statePath == "" {
 		var err error
@@ -228,8 +250,11 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 		}
 		scanTargets = mergeHosts(initialHosts, lan.SweepHosts(prefixes, gatewayIP))
 	}
-	opened := markSMB1(ctx, probe.Scan(ctx, scanTargets, []int{23, 2323, 21, 5900, 5555, 445}, 700*time.Millisecond, 128))
+	opened := markSMB1(ctx, probe.Scan(ctx, scanTargets, []int{23, 2323, 21, 5900, 5555, 445, 1883}, 700*time.Millisecond, 128))
+	opened = markUnauthenticatedMQTT(ctx, opened)
 	neighbors := arp.neighbors
+	opened = markUnauthenticatedVNC(ctx, opened)
+	opened = markUnauthenticatedADB(ctx, opened)
 	if len(scanTargets) > len(initialHosts) {
 		refreshed, err := lan.ReadARP(ctx)
 		if err != nil {
@@ -273,6 +298,15 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 		}
 	}
 
+	var lastCheckDays *int
+	if existed && !firstRun && loadState == historyLoadReady {
+		if lastRun, ok := store.LastRun(); ok {
+			checkNow := time.Now().UTC()
+			days := daysSinceLastCheck(checkNow, lastRun)
+			lastCheckDays = &days
+		}
+	}
+
 	reportedHosts := deviceHosts(neighbors, gatewayIP, discovery.responses, opened)
 	resolvedNames := lookupDeviceNames(ctx, reportedHosts)
 	neighborByIP := make(map[netip.Addr]lan.Neighbor, len(neighbors))
@@ -304,8 +338,9 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 	}
 
 	findings := makeFindings(opened, discovery.responses, gatewayIP, descriptions, deviceNames, newDeviceFindings, portMappings, lang)
+	findings = markAnonymousFTP(findings, anonymousFTPHosts(ctx, opened), lang)
 	findings = append(findings, wifiFs...)
-	findings = append(findings, gatewaySpoofFindings(neighbors, gatewayIP, lang)...)
+	findings = append(findings, gatewaySpoofFindings(gatewayNeighbors(ctx, neighbors, gatewayIP, lan.ReadARP), gatewayIP, lang)...)
 	report.Sort(findings)
 	findings = append(findings, vulnerableUPnPStackFindings(discovery.responses, gatewayIP, deviceNames, lang)...)
 	report.Sort(findings)
@@ -314,12 +349,13 @@ func run(args []string, stdout, stderr io.Writer) runResult {
 		Version: version, Score: report.Score(findings), Status: status, FirstRun: firstRun, Incomplete: incomplete,
 		WiFiLocationRequired: errors.Is(wifiCheck.err, wifi.ErrLocationPermission),
 		Checks: checkedSummary{
+			Ports:        len(scanTargets) > 0,
 			PortForwards: gatewayIP.IsValid() && portMappingQueryRan && portMappingErr == nil,
 			WiFi:         wifiCheck.err == nil && wifiCheck.security != wifi.Unknown,
 		},
 		Gateway: gatewayString(gatewayIP), Devices: devices, Findings: findings,
 	}
-	if err := writeOutput(stdout, result, *jsonOutput, lang); err != nil {
+	if err := writeOutput(stdout, result, *jsonOutput, lang, lastCheckDays); err != nil {
 		if *jsonOutput {
 			fmt.Fprintf(stderr, "warning: cannot write JSON output: %v\n", err)
 		} else {
@@ -378,7 +414,7 @@ func shouldSaveHistory(outputSucceeded, firstRun bool, store baseline.Store, loa
 	return !firstRun || len(store.Devices) > 0
 }
 
-func writeOutput(writer io.Writer, result output, jsonMode bool, lang string) error {
+func writeOutput(writer io.Writer, result output, jsonMode bool, lang string, lastCheckDays ...*int) error {
 	var rendered bytes.Buffer
 	if jsonMode {
 		encoder := json.NewEncoder(&rendered)
@@ -387,7 +423,7 @@ func writeOutput(writer io.Writer, result output, jsonMode bool, lang string) er
 			return err
 		}
 	} else {
-		renderText(&rendered, result, lang)
+		renderText(&rendered, result, lang, lastCheckDays...)
 	}
 	written, err := writer.Write(rendered.Bytes())
 	if err != nil {
@@ -552,18 +588,34 @@ func fetchPortMappings(
 	if !ok {
 		return nil, false, fmt.Errorf("router advertises UPnP but its port forwarding list cannot be queried")
 	}
-	service, ok := description.Device.WANConnection()
-	if !ok {
-		return nil, false, fmt.Errorf("router advertises UPnP but its port forwarding list cannot be queried")
+	type serviceEndpoint struct {
+		service    ssdp.Service
+		controlURL string
 	}
-	controlURL, ok := ssdp.ControlURL(description.Location, description.URLBase, service.ControlURL, routerIP)
-	if !ok {
+	endpoints := make([]serviceEndpoint, 0)
+	var errs []error
+	for _, service := range description.Device.WANConnections() {
+		controlURL, ok := ssdp.ControlURL(description.Location, description.URLBase, service.ControlURL, routerIP)
+		if !ok {
+			errs = append(errs, fmt.Errorf("%s: control URL is not on the router", service.ServiceType))
+			continue
+		}
+		endpoints = append(endpoints, serviceEndpoint{service: service, controlURL: controlURL})
+	}
+	if len(endpoints) == 0 {
 		return nil, false, fmt.Errorf("router advertises UPnP but its port forwarding list cannot be queried")
 	}
 	queryContext, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
-	mappings, err := ssdp.PortMappings(queryContext, client, controlURL, service.ServiceType)
-	return mappings, true, err
+	var mappings []ssdp.PortMapping
+	for _, endpoint := range endpoints {
+		serviceMappings, err := ssdp.PortMappings(queryContext, client, endpoint.controlURL, endpoint.service.ServiceType)
+		mappings = append(mappings, serviceMappings...)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", endpoint.service.ServiceType, err))
+		}
+	}
+	return mappings, true, errors.Join(errs...)
 }
 
 func fetchDescriptions(ctx context.Context, client *http.Client, responses []ssdp.Response) (map[netip.Addr]ssdp.Description, []error) {
@@ -633,7 +685,7 @@ func lookupDeviceNames(ctx context.Context, hosts []netip.Addr) map[netip.Addr]s
 	}()
 	go func() {
 		defer lookups.Done()
-		netbiosNames = netbios.Names(lookupCtx, hosts, time.Second)
+		netbiosNames = netbios.Names(ctx, hosts, time.Second)
 	}()
 	lookups.Wait()
 	return mergeDeviceNames(mdnsNames, netbiosNames)
@@ -726,6 +778,8 @@ func makeFindings(
 		switch item.Port {
 		case smb1Port:
 			findings = append(findings, report.Finding{ID: "smb1_enabled", Level: report.Caution, Points: 8, IP: item.IP.String(), Device: name})
+		case 1883:
+			findings = append(findings, report.Finding{ID: "mqtt_anonymous", Level: report.Caution, Points: 8, IP: item.IP.String(), Device: name})
 		case 23, 2323:
 			if _, exists := telnetSeen[item.IP]; exists {
 				continue
@@ -736,8 +790,12 @@ func makeFindings(
 			findings = append(findings, report.Finding{ID: "ftp_open", Level: report.Caution, Points: 8, IP: item.IP.String(), Device: name})
 		case 5900:
 			findings = append(findings, report.Finding{ID: "vnc_open", Level: report.Caution, Points: 8, IP: item.IP.String(), Device: name})
+		case vncNoAuthPort:
+			findings = append(findings, report.Finding{ID: "vnc_noauth", Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name})
 		case 5555:
 			findings = append(findings, report.Finding{ID: "adb_open", Level: report.Caution, Points: 8, IP: item.IP.String(), Device: name})
+		case adbNoAuthPort:
+			findings = append(findings, report.Finding{ID: "adb_noauth", Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name})
 		}
 	}
 	for ip, findingID := range newDeviceFindings {
@@ -785,6 +843,8 @@ func makeFindings(
 			switch mapping.InternalPort {
 			case 554, 37777, 34567:
 				group.id = "forward_camera"
+			case 1433, 3306, 5432, 6379, 9200, 27017:
+				group.id = "forward_database"
 			}
 		}
 		if index, exists := groupIndexes[key]; exists {
@@ -817,12 +877,21 @@ func makeFindings(
 		finding := &findings[i]
 		finding.Message = i18n.T(lang, finding.ID)
 		finding.Fix = i18n.T(lang, finding.ID+"_fix")
+		if finding.ID == "mqtt_anonymous" {
+			finding.Message = i18n.T(lang, finding.ID, finding.Device)
+		}
 		switch finding.ID {
 		case "telnet_open", "ftp_open", "vnc_open", "adb_open", "new_device", "new_device_private":
 			finding.Message = i18n.T(lang, finding.ID, finding.Device)
-		case "port_forward", "port_forward_risky", "forward_camera":
+		case "port_forward", "port_forward_risky", "forward_camera", "forward_database":
 			finding.Message = i18n.T(lang, finding.ID, finding.Device, finding.Port)
 		case "smb1_enabled":
+			finding.Message = i18n.T(lang, finding.ID, finding.Device)
+		}
+		if finding.ID == "vnc_noauth" {
+			finding.Message = i18n.T(lang, finding.ID, finding.Device)
+		}
+		if finding.ID == "adb_noauth" {
 			finding.Message = i18n.T(lang, finding.ID, finding.Device)
 		}
 	}
@@ -838,7 +907,7 @@ func riskyPortForward(mapping ssdp.PortMapping) bool {
 		return false
 	}
 	switch mapping.InternalPort {
-	case 21, 22, 23, 445, 554, 2323, 3389, 5555, 5900, 34567, 37777:
+	case 21, 22, 23, 135, 139, 445, 554, 2323, 2375, 3389, 5555, 5800, 5900, 1433, 3306, 5432, 6379, 9200, 27017, 34567, 37777:
 		return true
 	default:
 		return false
@@ -894,12 +963,14 @@ func wifiFindings(security wifi.Security, lang string) []report.Finding {
 	}}
 }
 
-func renderText(writer io.Writer, result output, lang string) {
+func renderText(writer io.Writer, result output, lang string, lastCheckDays ...*int) {
 	fmt.Fprintln(writer, i18n.T(lang, "title"))
 	fmt.Fprintln(writer, i18n.T(lang, "score", i18n.T(lang, result.Status), result.Score))
 	checkedItems := []string{
 		i18n.T(lang, "checked_devices", i18n.CheckedDeviceCount(lang, len(result.Devices))),
-		i18n.T(lang, "checked_ports"),
+	}
+	if result.Checks.Ports {
+		checkedItems = append(checkedItems, i18n.T(lang, "checked_ports"))
 	}
 	if result.Checks.PortForwards {
 		checkedItems = append(checkedItems, i18n.T(lang, "checked_forwards"))
@@ -921,6 +992,13 @@ func renderText(writer io.Writer, result output, lang string) {
 		}
 	}
 	fmt.Fprintln(writer, i18n.T(lang, "device_counts", len(result.Devices), newCount))
+	var lastCheckDayCount *int
+	if len(lastCheckDays) > 0 {
+		lastCheckDayCount = lastCheckDays[0]
+	}
+	if line, ok := lastCheckLine(result, lastCheckDayCount, lang); ok {
+		fmt.Fprintln(writer, line)
+	}
 	if result.FirstRun {
 		fmt.Fprintf(writer, "\n%s\n", i18n.T(lang, "first_run"))
 	}

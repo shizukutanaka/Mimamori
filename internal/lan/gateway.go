@@ -20,7 +20,7 @@ func ParseLinuxRoute(text string) (netip.Addr, bool) {
 	found := false
 	for _, line := range strings.Split(text, "\n") {
 		fields := strings.Fields(line)
-		if len(fields) < 7 || fields[1] != "00000000" || len(fields[2]) != 8 {
+		if len(fields) < 8 || fields[1] != "00000000" || fields[7] != "00000000" || len(fields[2]) != 8 {
 			continue
 		}
 		flags, err := strconv.ParseUint(fields[3], 16, 32)
