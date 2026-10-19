@@ -75,6 +75,8 @@ Devices
 
 Exit codes: `0` means no danger finding (caution findings may still be present), `2` means at least one danger finding, and `1` means a flag or operational error; it is also returned when no device could be checked, and a corrupt history file is kept as `devices.json.corrupt` (or `.corrupt.1`, `.corrupt.2`, … if older backups exist). A danger finding still returns `2` even if the device history cannot be saved. `0` is also returned when part of the check could not run; the text output then shows an incomplete notice and `--json` sets `"incomplete": true`, so scheduled scripts should check that field too.
 
+On Windows, a run started directly by Task Scheduler may also wait for Enter, as with a double-click, so the task keeps running; add `--json` for scheduled runs (it never waits).
+
 ## Build from source
 
 Go 1.22 or later is required. The project uses only the Go standard library.
@@ -149,6 +151,8 @@ Windows では `mimamori.exe` を実行してください（例: `.\mimamori.exe
 対応言語: 英語（`en`）、日本語（`ja`）、簡体字中国語（`zh-Hans`）、繁体字中国語（`zh-Hant`）、スペイン語（`es`）、ポルトガル語（`pt`）、フランス語（`fr`）、ドイツ語（`de`）、ロシア語（`ru`）、韓国語（`ko`）、インドネシア語（`id`）。言語は `LANGUAGE`、`LC_ALL`、`LC_MESSAGES`、`LANG` の順で自動判定し、これらが空の場合は Windows では表示言語、macOS では「システム設定 → 一般 → 言語と地域」の優先する言語を使います。`--lang pt-BR` や `--lang zh_TW` のように、言語コードや地域タグで指定できます。`--json` で整形済み JSON を出力できます。JSON の `checked`（`ports`・`port_forwards`・`wifi`）は実際に確認できた項目を示し、`false` は「安全」ではなく「確認できなかった」という意味です。
 
 終了コード: `0` は危険な問題なし（注意事項が表示される場合があります）、`2` は危険な問題あり、`1` はオプションまたは動作上のエラーです。確認できる機器がなかった場合にも `1` が返され、壊れた履歴ファイルは `devices.json.corrupt`（古いバックアップがある場合は `.corrupt.1`、`.corrupt.2` など）として残されます。履歴を保存できなかった場合でも、危険な問題があれば `2` を返します。確認の一部ができなかった場合も `0` を返します。その場合は、画面に「不完全な可能性」の案内が表示され、`--json` では `"incomplete": true` になります。定期実行のスクリプトでは、この項目も確かめてください。
+
+Windows では、タスク スケジューラーから直接起動した場合も、ダブルクリックと同じく Enter キーを待ち、タスクが終わらないことがあります。定期実行では `--json` を付けてください（`--json` では待ちません）。
 
 ```text
 Mimamori — 家の安全診断
