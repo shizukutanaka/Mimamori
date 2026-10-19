@@ -19,8 +19,20 @@ func TestParseSettings(t *testing.T) {
 		body string
 		want bool
 	}{
-		{name: "current settings", body: validSettings, want: true},
+		{name: "no user", body: validSettings, want: true},
 		{name: "Node-RED 1.3.7", body: `{"httpNodeRoot":"/","version":"1.3.7"}`, want: true},
+		{name: "wildcard permission", body: `{"httpNodeRoot":"/","version":"1","user":{"permissions":"*"}}`, want: true},
+		{name: "read permission only", body: `{"httpNodeRoot":"/","version":"1","user":{"permissions":"read"}}`},
+		{name: "wildcard read permission only", body: `{"httpNodeRoot":"/","version":"1","user":{"permissions":"*.read"}}`},
+		{name: "write permission", body: `{"httpNodeRoot":"/","version":"1","user":{"permissions":"write"}}`, want: true},
+		{name: "wildcard write permission", body: `{"httpNodeRoot":"/","version":"1","user":{"permissions":"*.write"}}`, want: true},
+		{name: "flows write permission", body: `{"httpNodeRoot":"/","version":"1","user":{"permissions":"flows.write"}}`, want: true},
+		{name: "array without write permission", body: `{"httpNodeRoot":"/","version":"1","user":{"permissions":["flows.read"]}}`},
+		{name: "array with write permission", body: `{"httpNodeRoot":"/","version":"1","user":{"permissions":["flows.read","flows.write"]}}`, want: true},
+		{name: "empty permission array", body: `{"httpNodeRoot":"/","version":"1","user":{"permissions":[]}}`},
+		{name: "user without permissions", body: `{"httpNodeRoot":"/","version":"1","user":{}}`},
+		{name: "numeric permissions", body: `{"httpNodeRoot":"/","version":"1","user":{"permissions":1}}`},
+		{name: "null user", body: `{"httpNodeRoot":"/","version":"1","user":null}`},
 		{name: "empty object", body: `{}`},
 		{name: "missing httpNodeRoot", body: `{"version":"1"}`},
 		{name: "httpNodeRoot is not a string", body: `{"httpNodeRoot":1,"version":"1"}`},

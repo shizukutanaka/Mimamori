@@ -26,7 +26,43 @@ func ParseSettings(body []byte) bool {
 			return false
 		}
 	}
-	return true
+	userRaw, hasUser := settings["user"]
+	if !hasUser {
+		return true
+	}
+	var user map[string]json.RawMessage
+	if err := json.Unmarshal(userRaw, &user); err != nil || user == nil {
+		return false
+	}
+	permissions, hasPermissions := user["permissions"]
+	return hasPermissions && hasFlowWritePermission(permissions)
+}
+
+func hasFlowWritePermission(permissions json.RawMessage) bool {
+	hasWriteScope := func(scope string) bool {
+		switch scope {
+		case "*", "flows.write", "write", "*.write":
+			return true
+		default:
+			return false
+		}
+	}
+
+	var scope string
+	if err := json.Unmarshal(permissions, &scope); err == nil {
+		return hasWriteScope(scope)
+	}
+
+	var scopes []json.RawMessage
+	if err := json.Unmarshal(permissions, &scopes); err != nil || scopes == nil {
+		return false
+	}
+	for _, rawScope := range scopes {
+		if err := json.Unmarshal(rawScope, &scope); err == nil && hasWriteScope(scope) {
+			return true
+		}
+	}
+	return false
 }
 
 func Unauthenticated(ctx context.Context, ip netip.Addr, port int, timeout time.Duration) bool {
