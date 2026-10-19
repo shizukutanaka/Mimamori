@@ -1,6 +1,9 @@
 package report
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
 func TestScoreClamps(t *testing.T) {
 	if got := Score([]Finding{{Points: 125}}); got != 0 {
@@ -42,6 +45,36 @@ func TestSort(t *testing.T) {
 	for i := range findings {
 		if findings[i].ID != want[i] {
 			t.Fatalf("Sort() order = %#v", findings)
+		}
+	}
+}
+
+func TestSortIsStableAndTotal(t *testing.T) {
+	findings := []Finding{
+		{ID: "z", Level: Caution, Points: 8, IP: "192.168.1.2", Port: 21},
+		{ID: "a", Level: Caution, Points: 8, IP: "192.168.1.10"},
+		{ID: "a", Level: Caution, Points: 8, IP: "192.168.1.2", Port: 5900},
+		{ID: "a", Level: Caution, Points: 8, IP: "192.168.1.2", Port: 21, Device: "Z"},
+		{ID: "a", Level: Caution, Points: 8, IP: "192.168.1.2", Port: 21, Device: "A"},
+		{ID: "b", Level: Caution, Points: 8, IP: "192.168.1.2"},
+	}
+	want := []Finding{
+		{ID: "a", Level: Caution, Points: 8, IP: "192.168.1.2", Port: 21, Device: "A"},
+		{ID: "a", Level: Caution, Points: 8, IP: "192.168.1.2", Port: 21, Device: "Z"},
+		{ID: "a", Level: Caution, Points: 8, IP: "192.168.1.2", Port: 5900},
+		{ID: "b", Level: Caution, Points: 8, IP: "192.168.1.2"},
+		{ID: "z", Level: Caution, Points: 8, IP: "192.168.1.2", Port: 21},
+		{ID: "a", Level: Caution, Points: 8, IP: "192.168.1.10"},
+	}
+
+	for _, input := range [][]Finding{
+		findings,
+		{findings[5], findings[4], findings[3], findings[2], findings[1], findings[0]},
+	} {
+		got := append([]Finding(nil), input...)
+		Sort(got)
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("Sort() = %#v, want %#v", got, want)
 		}
 	}
 }
