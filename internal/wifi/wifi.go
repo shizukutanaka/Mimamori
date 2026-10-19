@@ -73,7 +73,7 @@ func Current(ctx context.Context) (Security, error) {
 
 	switch runtime.GOOS {
 	case "darwin":
-		return ParseMacOS(output), nil
+		return macSecurityResult(output)
 	case "linux":
 		security := ParseNmcli(string(output))
 		if security == Unknown {
