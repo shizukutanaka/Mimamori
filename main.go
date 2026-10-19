@@ -701,9 +701,6 @@ func fetchDescriptions(ctx context.Context, client *http.Client, responses []ssd
 		go func() {
 			defer workers.Done()
 			for item := range requests {
-				if ctx.Err() != nil {
-					return
-				}
 				device, err := ssdp.FetchDescription(ctx, client, item.location)
 				results <- descriptionResult{ip: item.ip, device: device, err: err}
 			}
