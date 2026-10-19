@@ -6,7 +6,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -172,6 +174,124 @@ func TestUnauthenticated(t *testing.T) {
 	}
 }
 
+func TestUnauthenticatedHTTPSRedirect(t *testing.T) {
+	tests := []struct {
+		name     string
+		location string
+		body     string
+		want     bool
+		wantTLS  bool
+	}{
+		{
+			name:     "Gen2 unauthenticated",
+			location: "https://127.0.0.1:{tlsPort}/",
+			body:     `{"model":"SPSW-004PE16EU","gen":2,"auth_en":false}`,
+			want:     true,
+			wantTLS:  true,
+		},
+		{
+			name:     "Gen2 authentication enabled",
+			location: "https://127.0.0.1:{tlsPort}/",
+			body:     `{"model":"SPSW-004PE16EU","gen":2,"auth_en":true}`,
+			wantTLS:  true,
+		},
+		{
+			name:     "different IP",
+			location: "https://127.0.0.2:{tlsPort}/",
+			body:     `{"model":"SPSW-004PE16EU","gen":2,"auth_en":false}`,
+		},
+		{
+			name:     "HTTP URL",
+			location: "http://127.0.0.1:{tlsPort}/",
+			body:     `{"model":"SPSW-004PE16EU","gen":2,"auth_en":false}`,
+		},
+		{
+			name:     "wrong port",
+			location: "https://127.0.0.1:{wrongPort}/",
+			body:     `{"model":"SPSW-004PE16EU","gen":2,"auth_en":false}`,
+		},
+		{
+			name: "missing Location",
+			body: `{"model":"SPSW-004PE16EU","gen":2,"auth_en":false}`,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var tlsRequests atomic.Int32
+			tlsServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+				tlsRequests.Add(1)
+				if request.Method != http.MethodGet || request.URL.Path != "/shelly" {
+					t.Errorf("TLS request = %s %s, want GET /shelly", request.Method, request.URL.Path)
+				}
+				w.WriteHeader(http.StatusOK)
+				_, _ = io.WriteString(w, test.body)
+			}))
+			defer tlsServer.Close()
+			var wrongTLSRequests atomic.Int32
+			wrongTLSServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+				wrongTLSRequests.Add(1)
+				w.WriteHeader(http.StatusOK)
+				_, _ = io.WriteString(w, `{"model":"SPSW-004PE16EU","gen":2,"auth_en":false}`)
+			}))
+			defer wrongTLSServer.Close()
+			tlsAddress, err := netip.ParseAddrPort(tlsServer.Listener.Addr().String())
+			if err != nil {
+				t.Fatal(err)
+			}
+			tlsPort := int(tlsAddress.Port())
+			wrongTLSAddress, err := netip.ParseAddrPort(wrongTLSServer.Listener.Addr().String())
+			if err != nil {
+				t.Fatal(err)
+			}
+			location := strings.NewReplacer(
+				"{tlsPort}", strconv.Itoa(tlsPort),
+				"{wrongPort}", strconv.Itoa(int(wrongTLSAddress.Port())),
+			).Replace(test.location)
+
+			var httpRequests atomic.Int32
+			httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+				httpRequests.Add(1)
+				if request.Method != http.MethodGet || request.URL.Path != "/shelly" {
+					t.Errorf("HTTP request = %s %s, want GET /shelly", request.Method, request.URL.Path)
+				}
+				if location != "" {
+					w.Header().Set("Location", location)
+				}
+				w.WriteHeader(http.StatusFound)
+			}))
+			defer httpServer.Close()
+			httpAddress, err := netip.ParseAddrPort(httpServer.Listener.Addr().String())
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			got := unauthenticated(
+				context.Background(),
+				httpAddress.Addr(),
+				int(httpAddress.Port()),
+				tlsPort,
+				time.Second,
+			)
+			if got != test.want {
+				t.Fatalf("unauthenticated() = %t, want %t", got, test.want)
+			}
+			if got := httpRequests.Load(); got != 1 {
+				t.Errorf("HTTP request count = %d, want exactly one", got)
+			}
+			wantTLSRequests := int32(0)
+			if test.wantTLS {
+				wantTLSRequests = 1
+			}
+			if got := tlsRequests.Load(); got != wantTLSRequests {
+				t.Errorf("TLS request count = %d, want %d", got, wantTLSRequests)
+			}
+			if got := wrongTLSRequests.Load(); got != 0 {
+				t.Errorf("wrong-port TLS request count = %d, want zero", got)
+			}
+		})
+	}
+}
+
 func TestUnauthenticatedGuards(t *testing.T) {
 	ipv4 := netip.MustParseAddr("127.0.0.1")
 	tests := []struct {
@@ -213,6 +333,25 @@ func TestRequestURL(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			if got := requestURL(ip, test.port); got != test.want {
 				t.Fatalf("requestURL() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestHTTPSRequestURL(t *testing.T) {
+	ip := netip.MustParseAddr("192.168.1.5")
+	tests := []struct {
+		name string
+		port int
+		want string
+	}{
+		{name: "default HTTPS port omitted", port: 443, want: "https://192.168.1.5/shelly"},
+		{name: "non-default port included", port: 8443, want: "https://192.168.1.5:8443/shelly"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := httpsRequestURL(ip, test.port); got != test.want {
+				t.Fatalf("httpsRequestURL() = %q, want %q", got, test.want)
 			}
 		})
 	}
