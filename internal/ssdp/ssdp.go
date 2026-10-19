@@ -241,19 +241,28 @@ type Description struct {
 	Location string `xml:"-"`
 }
 
-func (d Device) WANConnection() (Service, bool) {
-	for _, service := range d.Services {
-		if strings.Contains(service.ServiceType, ":service:WANIPConnection:") ||
-			strings.Contains(service.ServiceType, ":service:WANPPPConnection:") {
-			return service, true
+func (d Device) WANConnections() []Service {
+	services := make([]Service, 0)
+	seen := make(map[Service]struct{})
+	var collect func(Device)
+	collect = func(device Device) {
+		for _, service := range device.Services {
+			if !strings.Contains(service.ServiceType, ":service:WANIPConnection:") &&
+				!strings.Contains(service.ServiceType, ":service:WANPPPConnection:") {
+				continue
+			}
+			if _, exists := seen[service]; exists {
+				continue
+			}
+			seen[service] = struct{}{}
+			services = append(services, service)
+		}
+		for _, child := range device.Devices {
+			collect(child)
 		}
 	}
-	for _, device := range d.Devices {
-		if service, ok := device.WANConnection(); ok {
-			return service, true
-		}
-	}
-	return Service{}, false
+	collect(d)
+	return services
 }
 
 func ParseDescription(r io.Reader) (Description, error) {

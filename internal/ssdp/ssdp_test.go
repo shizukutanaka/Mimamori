@@ -215,7 +215,7 @@ func TestParseDescription(t *testing.T) {
 	}
 }
 
-func TestWANConnectionNestedDevice(t *testing.T) {
+func TestWANConnectionsNestedDevice(t *testing.T) {
 	xmlDescription := `<root><device>
 <deviceType>urn:schemas-upnp-org:device:InternetGatewayDevice:1</deviceType>
 <deviceList><device><deviceType>urn:schemas-upnp-org:device:WANDevice:1</deviceType>
@@ -227,22 +227,51 @@ func TestWANConnectionNestedDevice(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	service, ok := description.Device.WANConnection()
-	if !ok || service.ServiceType != "urn:schemas-upnp-org:service:WANIPConnection:1" || service.ControlURL != "/ctl/IPConn" {
-		t.Fatalf("WANConnection() = %#v, %v", service, ok)
+	services := description.Device.WANConnections()
+	if len(services) != 1 || services[0].ServiceType != "urn:schemas-upnp-org:service:WANIPConnection:1" ||
+		services[0].ControlURL != "/ctl/IPConn" {
+		t.Fatalf("WANConnections() = %#v", services)
 	}
 }
 
-func TestWANConnectionPPP(t *testing.T) {
+func TestWANConnectionsPPP(t *testing.T) {
 	description, err := ParseDescription(strings.NewReader(`<root><device><deviceList><device><serviceList>
 <service><serviceType>urn:schemas-upnp-org:service:WANPPPConnection:1</serviceType><controlURL>/ctl/PPPConn</controlURL></service>
 </serviceList></device></deviceList></device></root>`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	service, ok := description.Device.WANConnection()
-	if !ok || service.ServiceType != "urn:schemas-upnp-org:service:WANPPPConnection:1" {
-		t.Fatalf("WANConnection() = %#v, %v", service, ok)
+	services := description.Device.WANConnections()
+	if len(services) != 1 || services[0].ServiceType != "urn:schemas-upnp-org:service:WANPPPConnection:1" {
+		t.Fatalf("WANConnections() = %#v", services)
+	}
+}
+
+func TestWANConnectionsReturnsUniqueServicesInDocumentOrder(t *testing.T) {
+	description, err := ParseDescription(strings.NewReader(`<root><device><deviceList>
+<device><deviceType>urn:schemas-upnp-org:device:WANConnectionDevice:1</deviceType><serviceList>
+<service><serviceType>urn:schemas-upnp-org:service:WANIPConnection:1</serviceType><controlURL>/ctl/IP</controlURL></service>
+<service><serviceType>urn:schemas-upnp-org:service:WANPPPConnection:1</serviceType><controlURL>/ctl/PPP</controlURL></service>
+</serviceList></device>
+<device><deviceType>urn:schemas-upnp-org:device:WANConnectionDevice:1</deviceType><serviceList>
+<service><serviceType>urn:schemas-upnp-org:service:WANPPPConnection:1</serviceType><controlURL>/ctl/PPP</controlURL></service>
+</serviceList></device>
+</deviceList></device></root>`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Service{
+		{ServiceType: "urn:schemas-upnp-org:service:WANIPConnection:1", ControlURL: "/ctl/IP"},
+		{ServiceType: "urn:schemas-upnp-org:service:WANPPPConnection:1", ControlURL: "/ctl/PPP"},
+	}
+	services := description.Device.WANConnections()
+	if len(services) != len(want) {
+		t.Fatalf("WANConnections() = %#v, want %#v", services, want)
+	}
+	for index := range want {
+		if services[index] != want[index] {
+			t.Fatalf("WANConnections() = %#v, want %#v", services, want)
+		}
 	}
 }
 
