@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 func ParsePTRResponse(b []byte) (question string, target string, ok bool) {
@@ -34,7 +35,7 @@ func ParsePTRResponse(b []byte) (question string, target string, ok bool) {
 			return "", "", false
 		}
 		if i == 0 {
-			question = name
+			question = strings.ToLower(name)
 		}
 		offset = next + 4
 	}
@@ -54,7 +55,7 @@ func ParsePTRResponse(b []byte) (question string, target string, ok bool) {
 		}
 		dataEnd := dataStart + dataLength
 
-		if recordType == 12 && class&0x7fff == 1 && owner == question {
+		if recordType == 12 && class&0x7fff == 1 && strings.ToLower(owner) == question {
 			name, end, valid := parseDNSName(b, dataStart)
 			if !valid || end != dataEnd {
 				return "", "", false
@@ -148,8 +149,11 @@ func reverseNames(
 		if !valid || responseQuestion != expectedQuestion {
 			continue
 		}
-		target = strings.TrimSuffix(target, ".local")
-		if target == "" {
+		if len(target) >= len(".local") &&
+			strings.EqualFold(target[len(target)-len(".local"):], ".local") {
+			target = target[:len(target)-len(".local")]
+		}
+		if target == "" || !utf8.ValidString(target) {
 			continue
 		}
 		if _, exists := names[sourceIP]; !exists {
@@ -234,7 +238,7 @@ func parseDNSName(packet []byte, start int) (string, int, bool) {
 				if next == -1 {
 					next = position
 				}
-				return strings.ToLower(strings.Join(labels, ".")), next, true
+				return strings.Join(labels, "."), next, true
 			}
 			if position+length > len(packet) {
 				return "", 0, false
