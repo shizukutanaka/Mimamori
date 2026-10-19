@@ -72,11 +72,34 @@ func TestRetryRenameReturnsLastErrorAtLimit(t *testing.T) {
 	if err != last {
 		t.Fatalf("retryRename() error = %v, want last error %v", err, last)
 	}
-	if attempts != 3 {
-		t.Fatalf("rename attempts = %d, want 3", attempts)
+	if attempts != 4 {
+		t.Fatalf("rename attempts = %d, want 4", attempts)
 	}
 	if want := []time.Duration{time.Millisecond, 2 * time.Millisecond, time.Millisecond}; !reflect.DeepEqual(waits, want) {
 		t.Fatalf("sleep durations = %v, want %v", waits, want)
+	}
+}
+
+func TestRetryRenameSucceedsAfterFinalSleep(t *testing.T) {
+	ephemeral := errors.New("temporary rename failure")
+	attempts := 0
+	err := retryRename(
+		func() error {
+			attempts++
+			if attempts <= 3 {
+				return ephemeral
+			}
+			return nil
+		},
+		func(err error) bool { return err == ephemeral },
+		func(time.Duration) {},
+		4*time.Millisecond,
+	)
+	if err != nil {
+		t.Fatalf("retryRename() error = %v, want nil", err)
+	}
+	if attempts != 4 {
+		t.Fatalf("rename attempts = %d, want 4", attempts)
 	}
 }
 
