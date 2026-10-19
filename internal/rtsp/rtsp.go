@@ -14,6 +14,22 @@ import (
 
 const maxResponseBytes = 8 * 1024
 
+const relayPort = 8554
+
+// describePath: MediaMTX rejects the empty path before checking auth.
+func describePath(port int) string {
+	if port == relayPort {
+		return "/mimamori"
+	}
+	return "/"
+}
+
+// openWithoutPassword: go2rtc, MediaMTX and live555 check credentials before
+// looking up the stream, so on the relay port a 404 means no password is set.
+func openWithoutPassword(port, status int, hasSDP bool) bool {
+	return status == 200 && hasSDP || port == relayPort && status == 404
+}
+
 // RFC 2326 §4 recommends accepting LF as a line terminator.
 func headerEnd(b []byte) (headerLength, bodyStart int, ok bool) {
 	lineStart := 0
@@ -99,8 +115,9 @@ func Unauthenticated(ctx context.Context, ip netip.Addr, port int, timeout time.
 	defer stopCancellation()
 
 	request := fmt.Sprintf(
-		"DESCRIBE rtsp://%s/ RTSP/1.0\r\nCSeq: 1\r\nAccept: application/sdp\r\nUser-Agent: Mimamori\r\n\r\n",
+		"DESCRIBE rtsp://%s%s RTSP/1.0\r\nCSeq: 1\r\nAccept: application/sdp\r\nUser-Agent: Mimamori\r\n\r\n",
 		address,
+		describePath(port),
 	)
 	written, err := io.WriteString(connection, request)
 	if err != nil || written != len(request) {
@@ -119,8 +136,11 @@ func Unauthenticated(ctx context.Context, ip netip.Addr, port int, timeout time.
 			response = append(response, buffer[:n]...)
 			status, hasSDP, ok := ParseDescribeResponse(response)
 			if ok {
-				if status != 200 || !hasSDP {
+				if !openWithoutPassword(port, status, hasSDP) {
 					return false
+				}
+				if status == 404 {
+					return true
 				}
 				_, bodyStart, found := headerEnd(response)
 				if found && len(response) > bodyStart {

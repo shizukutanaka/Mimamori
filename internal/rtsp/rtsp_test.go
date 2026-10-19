@@ -81,6 +81,49 @@ func TestParseDescribeResponse(t *testing.T) {
 	}
 }
 
+func TestOpenWithoutPassword(t *testing.T) {
+	tests := []struct {
+		name   string
+		port   int
+		status int
+		hasSDP bool
+		want   bool
+	}{
+		{name: "554 with SDP", port: 554, status: 200, hasSDP: true, want: true},
+		{name: "554 without SDP", port: 554, status: 200},
+		{name: "554 not found", port: 554, status: 404},
+		{name: "8554 not found", port: 8554, status: 404, want: true},
+		{name: "8554 unauthorized", port: 8554, status: 401},
+		{name: "8554 bad request", port: 8554, status: 400},
+		{name: "8554 with SDP", port: 8554, status: 200, hasSDP: true, want: true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := openWithoutPassword(test.port, test.status, test.hasSDP); got != test.want {
+				t.Fatalf("openWithoutPassword(%d, %d, %t) = %t, want %t",
+					test.port, test.status, test.hasSDP, got, test.want)
+			}
+		})
+	}
+}
+
+func TestDescribePath(t *testing.T) {
+	tests := []struct {
+		port int
+		want string
+	}{
+		{port: 554, want: "/"},
+		{port: 8554, want: "/mimamori"},
+	}
+
+	for _, test := range tests {
+		if got := describePath(test.port); got != test.want {
+			t.Errorf("describePath(%d) = %q, want %q", test.port, got, test.want)
+		}
+	}
+}
+
 func TestUnauthenticated(t *testing.T) {
 	const sdpBody = "v=0\r\no=- 1 1 IN IP4 127.0.0.1\r\ns=Camera\r\nt=0 0\r\n"
 	response := fmt.Sprintf(
