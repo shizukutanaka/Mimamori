@@ -38,7 +38,7 @@ func TestDiscoverResendsAfterDelay(t *testing.T) {
 }
 
 func TestDiscoverUnicastSucceedsWhenMulticastSendFails(t *testing.T) {
-	target, _, _ := startSSDPTestResponder(t, func(int, []byte) bool { return true })
+	target, requests, _ := startSSDPTestResponder(t, func(int, []byte) bool { return true })
 	unreachableMulticast := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0}
 
 	responses, err := discover(
@@ -51,6 +51,9 @@ func TestDiscoverUnicastSucceedsWhenMulticastSendFails(t *testing.T) {
 	)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if requests.Load() < 2 {
+		t.Fatalf("received %d unicast searches, want both message forms", requests.Load())
 	}
 	if len(responses) != 1 {
 		t.Fatalf("Discover() returned %d responses, want 1", len(responses))
@@ -109,7 +112,17 @@ func TestDiscoverUnicastSearchMessage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := string(<-received)
+	readRequest := func() string {
+		t.Helper()
+		select {
+		case request := <-received:
+			return string(request)
+		case <-time.After(time.Second):
+			t.Fatal("timed out waiting for unicast SSDP search")
+			return ""
+		}
+	}
+	request := readRequest()
 	if !strings.Contains(request, "HOST: 127.0.0.1:1900\r\n") {
 		t.Fatalf("unicast search HOST header = %q, want target IP with port 1900", request)
 	}
@@ -118,6 +131,16 @@ func TestDiscoverUnicastSearchMessage(t *testing.T) {
 	}
 	if strings.Contains(request, "\r\nMX:") {
 		t.Fatalf("unicast search unexpectedly includes MX: %q", request)
+	}
+
+	request = readRequest()
+	if !strings.Contains(request, "HOST: 239.255.255.250:1900\r\n") {
+		t.Fatalf("multicast-form unicast search HOST header = %q, want multicast HOST", request)
+	}
+	if !strings.Contains(request, "MAN: \"ssdp:discover\"\r\n") ||
+		!strings.Contains(request, "MX: 2\r\n") ||
+		!strings.Contains(request, "ST: ssdp:all\r\n") {
+		t.Fatalf("multicast-form unicast search is missing MAN, MX, or ST: %q", request)
 	}
 }
 

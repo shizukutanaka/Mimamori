@@ -174,6 +174,11 @@ func discoverTargets(
 			send(multicast, ssdpSearchMessage("239.255.255.250:1900", true))
 		}
 	}
+	// libupnp drops unicast M-SEARCH without MX or with a non-multicast HOST.
+	sendUnicast := func(target *net.UDPAddr) {
+		send(target, ssdpSearchMessage(target.IP.String()+":1900", false))
+		send(target, ssdpSearchMessage("239.255.255.250:1900", true))
+	}
 	sendMulticast()
 
 	var deadlineMu sync.Mutex
@@ -294,7 +299,7 @@ func discoverTargets(
 				currentDeadline = deadline
 				deadlineMu.Unlock()
 				setReadDeadlineForState()
-				send(target, ssdpSearchMessage(target.IP.String()+":1900", false))
+				sendUnicast(target)
 				if resend > 0 {
 					at := time.Now().Add(resend)
 					if at.Before(currentDeadline) {
@@ -315,7 +320,7 @@ func discoverTargets(
 				due := pending[:0]
 				for _, item := range pending {
 					if !item.at.After(now) {
-						send(item.target, ssdpSearchMessage(item.target.IP.String()+":1900", false))
+						sendUnicast(item.target)
 					} else {
 						due = append(due, item)
 					}
