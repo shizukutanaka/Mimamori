@@ -368,6 +368,118 @@ func TestNodeREDNoAuthFinding(t *testing.T) {
 	}
 }
 
+func TestHomebridgeNoAuthFinding(t *testing.T) {
+	ip := netip.MustParseAddr("192.168.1.10")
+	deviceName := "Homebridge"
+	findings := makeFindings(
+		[]probe.Open{{IP: ip, Port: 8581}},
+		nil,
+		netip.Addr{},
+		map[netip.Addr]ssdp.Description{},
+		map[netip.Addr]string{ip: deviceName},
+		nil,
+		nil,
+		"en",
+	)
+	if len(findings) != 1 {
+		t.Fatalf("makeFindings() returned %d findings, want one: %#v", len(findings), findings)
+	}
+	finding := findings[0]
+	if finding.ID != "homebridge_noauth" || finding.Level != report.Danger || finding.Points != 25 {
+		t.Fatalf("Homebridge finding = %#v, want homebridge_noauth/Danger/25", finding)
+	}
+	if finding.IP != ip.String() || finding.Device != deviceName {
+		t.Fatalf("Homebridge finding target = %#v, want IP %s and device %q", finding, ip, deviceName)
+	}
+	if finding.Message != i18n.T("en", "homebridge_noauth", deviceName) || finding.Fix != i18n.T("en", "homebridge_noauth_fix") {
+		t.Fatalf("Homebridge finding text = %#v, want localized message and fix", finding)
+	}
+}
+
+func TestSyncthingNoAuthFinding(t *testing.T) {
+	ip := netip.MustParseAddr("192.168.1.10")
+	deviceName := "Syncthing"
+	findings := makeFindings(
+		[]probe.Open{{IP: ip, Port: 8384}},
+		nil,
+		netip.Addr{},
+		map[netip.Addr]ssdp.Description{},
+		map[netip.Addr]string{ip: deviceName},
+		nil,
+		nil,
+		"en",
+	)
+	if len(findings) != 1 {
+		t.Fatalf("makeFindings() returned %d findings, want one: %#v", len(findings), findings)
+	}
+	finding := findings[0]
+	if finding.ID != "syncthing_noauth" || finding.Level != report.Danger || finding.Points != 25 {
+		t.Fatalf("Syncthing finding = %#v, want syncthing_noauth/Danger/25", finding)
+	}
+	if finding.IP != ip.String() || finding.Device != deviceName {
+		t.Fatalf("Syncthing finding target = %#v, want IP %s and device %q", finding, ip, deviceName)
+	}
+	if finding.Message != i18n.T("en", "syncthing_noauth", deviceName) || finding.Fix != i18n.T("en", "syncthing_noauth_fix") {
+		t.Fatalf("Syncthing finding text = %#v, want localized message and fix", finding)
+	}
+}
+
+func TestTransmissionNoAuthFinding(t *testing.T) {
+	ip := netip.MustParseAddr("192.168.1.10")
+	deviceName := "Transmission"
+	findings := makeFindings(
+		[]probe.Open{{IP: ip, Port: 9091}},
+		nil,
+		netip.Addr{},
+		map[netip.Addr]ssdp.Description{},
+		map[netip.Addr]string{ip: deviceName},
+		nil,
+		nil,
+		"en",
+	)
+	if len(findings) != 1 {
+		t.Fatalf("makeFindings() returned %d findings, want one: %#v", len(findings), findings)
+	}
+	finding := findings[0]
+	if finding.ID != "transmission_noauth" || finding.Level != report.Danger || finding.Points != 25 {
+		t.Fatalf("Transmission finding = %#v, want transmission_noauth/Danger/25", finding)
+	}
+	if finding.IP != ip.String() || finding.Device != deviceName {
+		t.Fatalf("Transmission finding target = %#v, want IP %s and device %q", finding, ip, deviceName)
+	}
+	if finding.Message != i18n.T("en", "transmission_noauth", deviceName) || finding.Fix != i18n.T("en", "transmission_noauth_fix") {
+		t.Fatalf("Transmission finding text = %#v, want localized message and fix", finding)
+	}
+}
+
+func TestScryptedOnboardingFinding(t *testing.T) {
+	ip := netip.MustParseAddr("192.168.1.10")
+	deviceName := "Scrypted"
+	findings := makeFindings(
+		[]probe.Open{{IP: ip, Port: 11080}},
+		nil,
+		netip.Addr{},
+		map[netip.Addr]ssdp.Description{},
+		map[netip.Addr]string{ip: deviceName},
+		nil,
+		nil,
+		"en",
+	)
+	if len(findings) != 1 {
+		t.Fatalf("makeFindings() returned %d findings, want one: %#v", len(findings), findings)
+	}
+	finding := findings[0]
+	if finding.ID != "scrypted_onboarding" || finding.Level != report.Danger || finding.Points != 25 {
+		t.Fatalf("Scrypted finding = %#v, want scrypted_onboarding/Danger/25", finding)
+	}
+	if finding.IP != ip.String() || finding.Device != deviceName {
+		t.Fatalf("Scrypted finding target = %#v, want IP %s and device %q", finding, ip, deviceName)
+	}
+	if finding.Message != i18n.T("en", "scrypted_onboarding", deviceName) || finding.Fix != i18n.T("en", "scrypted_onboarding_fix") {
+		t.Fatalf("Scrypted finding text = %#v, want localized message and fix", finding)
+	}
+}
+
 func TestESPHomeNoAuthFinding(t *testing.T) {
 	ip := netip.MustParseAddr("192.168.1.10")
 	deviceName := "ESPHome"
@@ -505,6 +617,62 @@ func TestShellyNoAuthFinding(t *testing.T) {
 	}
 	if finding.Message != i18n.T("en", "shelly_noauth", deviceName) || finding.Fix != i18n.T("en", "shelly_noauth_fix") {
 		t.Fatalf("Shelly finding text = %#v, want localized message and fix", finding)
+	}
+}
+
+func TestWLEDNoAuthFinding(t *testing.T) {
+	ip := netip.MustParseAddr("192.168.1.10")
+	deviceName := "Living room lights"
+	findings := makeFindings(
+		[]probe.Open{{IP: ip, Port: 80, Service: "wled"}},
+		nil,
+		netip.Addr{},
+		map[netip.Addr]ssdp.Description{},
+		map[netip.Addr]string{ip: deviceName},
+		nil,
+		nil,
+		"en",
+	)
+	if len(findings) != 1 {
+		t.Fatalf("makeFindings() returned %d findings, want one: %#v", len(findings), findings)
+	}
+	finding := findings[0]
+	if finding.ID != "wled_noauth" || finding.Level != report.Danger || finding.Points != 25 {
+		t.Fatalf("WLED finding = %#v, want wled_noauth/Danger/25", finding)
+	}
+	if finding.IP != ip.String() || finding.Device != deviceName {
+		t.Fatalf("WLED finding target = %#v, want IP %s and device %q", finding, ip, deviceName)
+	}
+	if finding.Message != i18n.T("en", "wled_noauth", deviceName) || finding.Fix != i18n.T("en", "wled_noauth_fix") {
+		t.Fatalf("WLED finding text = %#v, want localized message and fix", finding)
+	}
+}
+
+func TestPiHoleNoAuthFinding(t *testing.T) {
+	ip := netip.MustParseAddr("192.168.1.10")
+	deviceName := "Pi-hole"
+	findings := makeFindings(
+		[]probe.Open{{IP: ip, Port: 80, Service: "pihole"}},
+		nil,
+		netip.Addr{},
+		map[netip.Addr]ssdp.Description{},
+		map[netip.Addr]string{ip: deviceName},
+		nil,
+		nil,
+		"en",
+	)
+	if len(findings) != 1 {
+		t.Fatalf("makeFindings() returned %d findings, want one: %#v", len(findings), findings)
+	}
+	finding := findings[0]
+	if finding.ID != "pihole_noauth" || finding.Level != report.Danger || finding.Points != 25 {
+		t.Fatalf("Pi-hole finding = %#v, want pihole_noauth/Danger/25", finding)
+	}
+	if finding.IP != ip.String() || finding.Device != deviceName {
+		t.Fatalf("Pi-hole finding target = %#v, want IP %s and device %q", finding, ip, deviceName)
+	}
+	if finding.Message != i18n.T("en", "pihole_noauth", deviceName) || finding.Fix != i18n.T("en", "pihole_noauth_fix") {
+		t.Fatalf("Pi-hole finding text = %#v, want localized message and fix", finding)
 	}
 }
 
