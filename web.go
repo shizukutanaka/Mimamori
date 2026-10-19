@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/shizukutanaka/Mimamori/internal/pihole"
 	"github.com/shizukutanaka/Mimamori/internal/probe"
 	"github.com/shizukutanaka/Mimamori/internal/shelly"
 	"github.com/shizukutanaka/Mimamori/internal/tasmota"
@@ -89,6 +90,9 @@ func classifyUnauthenticatedWeb(ctx context.Context, ip netip.Addr, port int) st
 	}
 	if wled.Unauthenticated(ctx, ip, port, 3*time.Second) {
 		return "wled"
+	}
+	if pihole.Unauthenticated(ctx, ip, port, 3*time.Second) {
+		return "pihole"
 	}
 	return ""
 }

@@ -929,6 +929,8 @@ func makeFindings(
 				service = "shelly_noauth"
 			} else if item.Service == "wled" {
 				service = "wled_noauth"
+			} else if item.Service == "pihole" {
+				service = "pihole_noauth"
 			}
 			findings = append(findings, report.Finding{ID: service, Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name})
 		case 23, 2323:
@@ -1091,6 +1093,9 @@ func makeFindings(
 			finding.Message = i18n.T(lang, finding.ID, finding.Device)
 		}
 		if finding.ID == "wled_noauth" {
+			finding.Message = i18n.T(lang, finding.ID, finding.Device)
+		}
+		if finding.ID == "pihole_noauth" {
 			finding.Message = i18n.T(lang, finding.ID, finding.Device)
 		}
 	}

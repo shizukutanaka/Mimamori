@@ -18,6 +18,7 @@ func TestMarkUnauthenticatedWeb(t *testing.T) {
 		rootBody    string
 		shellyBody  string
 		wledBody    string
+		piholeBody  string
 		wantService string
 		wantPaths   []string
 	}{
@@ -44,11 +45,19 @@ func TestMarkUnauthenticatedWeb(t *testing.T) {
 			wantPaths:   []string{"/", "/shelly", "/json/info", "/update"},
 		},
 		{
+			name:        "Pi-hole",
+			rootBody:    `<html>Unknown device</html>`,
+			shellyBody:  `{"online":true}`,
+			piholeBody:  `{"session":{"valid":true,"totp":false,"sid":null,"validity":-1,"message":"no password set"},"took":0.001}`,
+			wantService: "pihole",
+			wantPaths:   []string{"/", "/shelly", "/json/info", "/api/auth"},
+		},
+		{
 			name:       "unmatched",
 			rootBody:   `<html>Unknown device</html>`,
 			shellyBody: `{"online":true}`,
 			wledBody:   `{"online":true}`,
-			wantPaths:  []string{"/", "/shelly", "/json/info"},
+			wantPaths:  []string{"/", "/shelly", "/json/info", "/api/auth"},
 		},
 	}
 	for _, test := range tests {
@@ -70,6 +79,8 @@ func TestMarkUnauthenticatedWeb(t *testing.T) {
 					body = test.wledBody
 				case "/update":
 					body = ""
+				case "/api/auth":
+					body = test.piholeBody
 				}
 				_, _ = io.WriteString(w, body)
 			}))
