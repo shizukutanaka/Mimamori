@@ -54,7 +54,7 @@ After extracting, run Mimamori from a terminal:
 ./mimamori --state ./devices.json --wait 5s
 ```
 
-On Windows, run `mimamori.exe` (for example, `.\mimamori.exe --lang ja`) or double-click it in Explorer. When launched by double-click, the window stays open until you press Enter so you can read the results. The first run learns the devices on your network; new-device notices begin on the next run. By default, history is stored under your OS user configuration directory in `Mimamori/devices.json`.
+On Windows, run `mimamori.exe` (for example, `.\mimamori.exe --lang ja`) or double-click it in Explorer. When launched by double-click, the window stays open until you press Enter so you can read the results. The first run learns the devices on your network; new-device notices begin on the next run. By default, history is stored under your OS user configuration directory in `Mimamori/devices.json`. The history is not separated by network. If you also check another network you manage (for example, your parents' home), use a separate file for it, such as `--state ./parents.json`. Otherwise, every device there is reported as new on the first check, and those devices are no longer reported as new if they later appear at home.
 
 Supported languages: English (`en`), Japanese (`ja`), Simplified Chinese (`zh-Hans`), Traditional Chinese (`zh-Hant`), Spanish (`es`), Portuguese (`pt`), French (`fr`), German (`de`), Russian (`ru`), Korean (`ko`), and Indonesian (`id`). By default, Mimamori checks `LANGUAGE`, `LC_ALL`, `LC_MESSAGES`, then `LANG`; when these are empty, it uses the display language on Windows and the preferred language (System Settings → General → Language & Region) on macOS. Use `--lang` with a language code or regional tag, such as `--lang pt-BR` or `--lang zh_TW`, to choose explicitly. Use `--json` for indented JSON output. Its `checked` object (`ports`, `port_forwards`, `wifi`) shows which checks actually ran; `false` means not checked, not safe.
 
@@ -146,7 +146,7 @@ Linux:   sha256sum -c SHA256SUMS --ignore-missing
 ./mimamori --state ./devices.json --wait 5s
 ```
 
-Windows では `mimamori.exe` を実行してください（例: `.\mimamori.exe --lang ja`）。エクスプローラーからダブルクリックしても起動でき、その場合は結果を読めるよう Enter キーを押すまでウィンドウが開いたままになります。初回は家の機器を記録し、新しい機器のお知らせは次回から表示します。履歴は通常、OS のユーザー設定フォルダーにある `Mimamori/devices.json` に保存されます。
+Windows では `mimamori.exe` を実行してください（例: `.\mimamori.exe --lang ja`）。エクスプローラーからダブルクリックしても起動でき、その場合は結果を読めるよう Enter キーを押すまでウィンドウが開いたままになります。初回は家の機器を記録し、新しい機器のお知らせは次回から表示します。履歴は通常、OS のユーザー設定フォルダーにある `Mimamori/devices.json` に保存されます。履歴はネットワークごとに分かれていません。実家など、自分で管理する別のネットワークも確認する場合は、`--state ./parents.json` のように別のファイルを指定してください。指定しないと、そのネットワークの機器が初回からすべて「新しい機器」として表示され、その機器が後で家に来ても「新しい機器」として表示されなくなります。
 
 対応言語: 英語（`en`）、日本語（`ja`）、簡体字中国語（`zh-Hans`）、繁体字中国語（`zh-Hant`）、スペイン語（`es`）、ポルトガル語（`pt`）、フランス語（`fr`）、ドイツ語（`de`）、ロシア語（`ru`）、韓国語（`ko`）、インドネシア語（`id`）。言語は `LANGUAGE`、`LC_ALL`、`LC_MESSAGES`、`LANG` の順で自動判定し、これらが空の場合は Windows では表示言語、macOS では「システム設定 → 一般 → 言語と地域」の優先する言語を使います。`--lang pt-BR` や `--lang zh_TW` のように、言語コードや地域タグで指定できます。`--json` で整形済み JSON を出力できます。JSON の `checked`（`ports`・`port_forwards`・`wifi`）は実際に確認できた項目を示し、`false` は「安全」ではなく「確認できなかった」という意味です。
 
