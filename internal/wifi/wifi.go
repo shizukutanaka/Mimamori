@@ -83,8 +83,8 @@ func Current(ctx context.Context) (Security, error) {
 			flagsCommand := exec.CommandContext(commandContext, "nmcli", "-t", "-f", "ACTIVE,RSN-FLAGS", "dev", "wifi")
 			flagsCommand.Env = withLCAllC(os.Environ())
 			flagsOutput, err := flagsCommand.Output()
-			if commandContext.Err() != nil {
-				return Unknown, commandContext.Err()
+			if ctx.Err() != nil {
+				return Unknown, ctx.Err()
 			}
 			if err == nil && NmcliAllowsTKIP(string(flagsOutput)) {
 				return WPA1orTKIP, nil
