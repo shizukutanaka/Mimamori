@@ -22,7 +22,7 @@ func TestMarkUnauthenticatedGo2RTC(t *testing.T) {
 		{
 			name:   "unauthenticated go2rtc API is kept",
 			status: http.StatusOK,
-			body:   `{"host":"127.0.0.1:1984","revision":"a1b2c3d","version":"1.9.9"}`,
+			body:   `{"host":"127.0.0.1:1984","revision":"a1b2c3d","rtsp":{"listen":":8554"},"version":"1.9.9"}`,
 			want:   true,
 		},
 		{

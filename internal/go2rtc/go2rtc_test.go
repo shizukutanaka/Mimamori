@@ -20,34 +20,71 @@ func TestParseAPIInfo(t *testing.T) {
 		{
 			name:   "go2rtc API info",
 			status: http.StatusOK,
-			body:   `{"host":"192.168.1.5:1984","revision":"a1b2c3d","version":"1.9.9"}`,
+			body:   `{"host":"192.168.1.5:1984","revision":"a1b2c3d","rtsp":{"listen":":8554","default_query":"video&audio"},"version":"1.9.9"}`,
 			want:   true,
 		},
 		{
 			name:   "unauthorized",
 			status: http.StatusUnauthorized,
-			body:   `{"host":"192.168.1.5:1984","revision":"a1b2c3d","version":"1.9.9"}`,
+			body:   `{"host":"192.168.1.5:1984","revision":"a1b2c3d","rtsp":{"listen":":8554","default_query":"video&audio"},"version":"1.9.9"}`,
 		},
 		{
 			name:   "missing host",
 			status: http.StatusOK,
-			body:   `{"version":"1.9.9"}`,
+			body:   `{"rtsp":{"listen":":8554"},"version":"1.9.9"}`,
 		},
 		{
 			name:   "empty version",
 			status: http.StatusOK,
-			body:   `{"host":"192.168.1.5:1984","revision":"a1b2c3d","version":""}`,
+			body:   `{"host":"192.168.1.5:1984","revision":"a1b2c3d","rtsp":{"listen":":8554"},"version":""}`,
 		},
 		{
 			name:   "go2rtc before 1.9.2 has no revision",
 			status: http.StatusOK,
-			body:   `{"config_path":"/config/go2rtc.yaml","host":"192.168.1.5:1984","version":"1.8.4"}`,
+			body:   `{"config_path":"/config/go2rtc.yaml","host":"192.168.1.5:1984","rtsp":{"listen":":8554","default_query":"video&audio"},"version":"1.8.4"}`,
+			want:   true,
+		},
+		{
+			name:   "go2rtc 1.0.0 API info",
+			status: http.StatusOK,
+			body:   `{"host":"192.168.1.5:1984","rtsp":{"listen":":8554"},"version":"1.0.0"}`,
+			want:   true,
+		},
+		{
+			name:   "go2rtc with RTSP disabled",
+			status: http.StatusOK,
+			body:   `{"host":"192.168.1.5:1984","rtsp":{"listen":""},"version":"1.9.9"}`,
 			want:   true,
 		},
 		{
 			name:   "version without host is not go2rtc",
 			status: http.StatusOK,
-			body:   `{"revision":"a1b2c3d","version":"1.9.9"}`,
+			body:   `{"revision":"a1b2c3d","rtsp":{"listen":":8554"},"version":"1.9.9"}`,
+		},
+		{
+			name:   "unrelated service is not go2rtc",
+			status: http.StatusOK,
+			body:   `{"host":"my-device","version":"2.0"}`,
+		},
+		{
+			name:   "RTSP config is not an object",
+			status: http.StatusOK,
+			body:   `{"host":"192.168.1.5:1984","rtsp":":8554","version":"1.9.9"}`,
+		},
+		{
+			name:   "RTSP config has no listen field",
+			status: http.StatusOK,
+			body:   `{"host":"192.168.1.5:1984","rtsp":{},"version":"1.9.9"}`,
+		},
+		{
+			name:   "RTSP config is null",
+			status: http.StatusOK,
+			body:   `{"host":"192.168.1.5:1984","rtsp":null,"version":"1.9.9"}`,
+		},
+		{
+			name:   "RTSP listen is not a string",
+			status: http.StatusOK,
+			body:   `{"host":"192.168.1.5:1984","rtsp":{"listen":8554},"version":"1.9.9"}`,
 		},
 		{
 			name:   "non-JSON",
@@ -57,7 +94,7 @@ func TestParseAPIInfo(t *testing.T) {
 		{
 			name:   "JSON array",
 			status: http.StatusOK,
-			body:   `[{"revision":"a1b2c3d","version":"1.9.9"}]`,
+			body:   `[{"host":"192.168.1.5:1984","rtsp":{"listen":":8554"},"version":"1.9.9"}]`,
 		},
 	}
 	for _, test := range tests {
@@ -80,7 +117,7 @@ func TestUnauthenticated(t *testing.T) {
 		{
 			name:   "go2rtc API info",
 			status: http.StatusOK,
-			body:   `{"host":"127.0.0.1:1984","revision":"a1b2c3d","version":"1.9.9"}`,
+			body:   `{"host":"127.0.0.1:1984","revision":"a1b2c3d","rtsp":{"listen":":8554","default_query":"video&audio"},"version":"1.9.9"}`,
 			want:   true,
 		},
 		{
