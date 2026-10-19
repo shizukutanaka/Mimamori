@@ -302,7 +302,6 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 		}
 	}
 	opened = filteredOpened
-	opened = runMarkers(ctx, opened, serviceMarkers)
 	neighbors := arp.neighbors
 	if len(phase1Targets) > len(phase1Hosts) {
 		refreshed, err := lan.ReadARP(ctx)
@@ -312,6 +311,13 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 			neighbors = mergeNeighbors(neighbors, refreshed)
 		}
 	}
+	nameNeighbors := reportNeighbors(neighbors, prefixes, prefixesFailed, gatewayIP)
+	nameHosts := deviceHosts(nameNeighbors, gatewayIP, discovery.responses, opened)
+	resolvedNamesCh := make(chan map[netip.Addr]string, 1)
+	go func() {
+		resolvedNamesCh <- lookupDeviceNames(ctx, nameHosts)
+	}()
+	opened = runMarkers(ctx, opened, serviceMarkers)
 	wifiCheck := <-wifiCh
 	if wifiCheck.err != nil {
 		fmt.Fprintf(stderr, "warning: cannot determine Wi-Fi security: %v\n", wifiCheck.err)
@@ -340,10 +346,7 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 		return finish(1)
 	}
 
-	if prefixesFailed {
-		prefixes = nil
-	}
-	neighbors = homeNeighbors(neighbors, prefixes, gatewayIP)
+	neighbors = reportNeighbors(neighbors, prefixes, prefixesFailed, gatewayIP)
 
 	store, existed, err := loadHistory(*statePath, statePathErr)
 	firstRun := !existed
@@ -376,7 +379,7 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 	}
 
 	reportedHosts := deviceHosts(neighbors, gatewayIP, discovery.responses, opened)
-	resolvedNames := lookupDeviceNames(ctx, reportedHosts)
+	resolvedNames := <-resolvedNamesCh
 	neighborByIP := make(map[netip.Addr]lan.Neighbor, len(neighbors))
 	for _, neighbor := range neighbors {
 		neighborByIP[neighbor.IP] = neighbor
@@ -680,6 +683,13 @@ func deviceHosts(neighbors []lan.Neighbor, gateway netip.Addr, responses []ssdp.
 		return hosts[i].Less(hosts[j])
 	})
 	return hosts
+}
+
+func reportNeighbors(neighbors []lan.Neighbor, prefixes []netip.Prefix, prefixesFailed bool, gateway netip.Addr) []lan.Neighbor {
+	if prefixesFailed {
+		prefixes = nil
+	}
+	return homeNeighbors(neighbors, prefixes, gateway)
 }
 
 func newUPnPHTTPClient() *http.Client {
