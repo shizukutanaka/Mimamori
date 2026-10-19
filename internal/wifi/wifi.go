@@ -146,7 +146,15 @@ func ParseNmcli(text string) Security {
 			results = append(results, nmcliSecurity(strings.TrimPrefix(line, "yes:")))
 		}
 	}
-	return worstSecurity(results)
+	worst := worstSecurity(results)
+	if worst == Modern {
+		for _, result := range results {
+			if result == Unknown {
+				return Unknown
+			}
+		}
+	}
+	return worst
 }
 
 func nmcliSecurity(security string) Security {
