@@ -163,7 +163,8 @@ func ParseNmcli(text string) Security {
 func wpaCliSecurity(ctx context.Context) (Security, error) {
 	interfaces := supplicantInterfaces([]string{"/run/wpa_supplicant", "/var/run/wpa_supplicant"})
 	if len(interfaces) == 0 {
-		return wpaCliStatus(ctx, "status")
+		security, err := wpaCliStatus(ctx, "status")
+		return unreadableIfConnected("/sys/class/net", security, err)
 	}
 
 	results := make([]Security, 0, len(interfaces))
@@ -174,7 +175,7 @@ func wpaCliSecurity(ctx context.Context) (Security, error) {
 		}
 		results = append(results, security)
 	}
-	return worstSecurity(results), nil
+	return unreadableIfConnected("/sys/class/net", worstSecurity(results), nil)
 }
 
 type supplicantInterface struct {
