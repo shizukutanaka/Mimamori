@@ -368,6 +368,34 @@ func TestNodeREDNoAuthFinding(t *testing.T) {
 	}
 }
 
+func TestESPHomeNoAuthFinding(t *testing.T) {
+	ip := netip.MustParseAddr("192.168.1.10")
+	deviceName := "ESPHome"
+	findings := makeFindings(
+		[]probe.Open{{IP: ip, Port: 6052}},
+		nil,
+		netip.Addr{},
+		map[netip.Addr]ssdp.Description{},
+		map[netip.Addr]string{ip: deviceName},
+		nil,
+		nil,
+		"en",
+	)
+	if len(findings) != 1 {
+		t.Fatalf("makeFindings() returned %d findings, want one: %#v", len(findings), findings)
+	}
+	finding := findings[0]
+	if finding.ID != "esphome_noauth" || finding.Level != report.Danger || finding.Points != 25 {
+		t.Fatalf("ESPHome finding = %#v, want esphome_noauth/Danger/25", finding)
+	}
+	if finding.IP != ip.String() || finding.Device != deviceName {
+		t.Fatalf("ESPHome finding target = %#v, want IP %s and device %q", finding, ip, deviceName)
+	}
+	if finding.Message != i18n.T("en", "esphome_noauth", deviceName) || finding.Fix != i18n.T("en", "esphome_noauth_fix") {
+		t.Fatalf("ESPHome finding text = %#v, want localized message and fix", finding)
+	}
+}
+
 func TestRTSP8554Finding(t *testing.T) {
 	ip := netip.MustParseAddr("192.168.1.23")
 	findings := makeFindings(
