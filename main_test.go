@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -686,6 +687,16 @@ func TestStripUnsafeRunes(t *testing.T) {
 				t.Fatalf("stripUnsafeRunes(%q) = %q, want %q", test.input, got, test.want)
 			}
 		})
+	}
+}
+
+func TestPortMappingWarningSeparatesJoinedErrors(t *testing.T) {
+	err := errors.Join(
+		errors.New("WANIPConnection: HTTP 500"),
+		errors.New("WANPPPConnection: HTTP 500"),
+	)
+	if got := portMappingWarning(err); !strings.Contains(got, "HTTP 500; WANPPPConnection:") {
+		t.Fatalf("portMappingWarning() = %q, want semicolon between joined errors", got)
 	}
 }
 

@@ -232,7 +232,7 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 	wifiFs := wifiFindings(wifiCheck.security, lang)
 	portMappings, portMappingQueryRan, portMappingErr := fetchPortMappings(ctx, httpClient, gatewayIP, discovery.responses, descriptions)
 	if portMappingErr != nil {
-		fmt.Fprintf(stderr, "warning: cannot read the router's port forwarding list: %s\n", stripUnsafeRunes(portMappingErr.Error()))
+		fmt.Fprintf(stderr, "warning: cannot read the router's port forwarding list: %s\n", portMappingWarning(portMappingErr))
 		incomplete = true
 	}
 
@@ -734,6 +734,10 @@ func deviceName(
 		return i18n.T(lang, "randomized_device")
 	}
 	return ip.String()
+}
+
+func portMappingWarning(err error) string {
+	return stripUnsafeRunes(strings.ReplaceAll(err.Error(), "\n", "; "))
 }
 
 func stripUnsafeRunes(s string) string {
