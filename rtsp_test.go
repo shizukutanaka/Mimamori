@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"io"
 	"net"
@@ -77,8 +78,17 @@ func TestMarkUnauthenticatedRTSP8554(t *testing.T) {
 			wantUnauthenticated: true,
 		},
 		{
+			name:                "404 without a password is kept",
+			response:            "RTSP/1.0 404 Not Found\r\nCSeq: 1\r\n\r\n",
+			wantUnauthenticated: true,
+		},
+		{
+			name:     "400 invalid path is dropped",
+			response: "RTSP/1.0 400 Bad Request\r\nCSeq: 1\r\n\r\n",
+		},
+		{
 			name:     "authentication-required server is dropped",
-			response: "RTSP/1.0 401 Unauthorized\r\nCSeq: 1\r\nWWW-Authenticate: Basic\r\n\r\n",
+			response: "RTSP/1.0 401 Unauthorized\r\nCSeq: 1\r\nWWW-Authenticate: Basic realm=\"go2rtc\"\r\n\r\n",
 		},
 	}
 
@@ -103,8 +113,9 @@ func TestMarkUnauthenticatedRTSP8554(t *testing.T) {
 			}
 			select {
 			case requestLine := <-requests:
-				if !strings.HasPrefix(requestLine, "DESCRIBE ") {
-					t.Fatalf("RTSP request = %q, want a DESCRIBE request", requestLine)
+				const wantRequestPrefix = "DESCRIBE rtsp://127.0.0.1:8554/mimamori RTSP/1.0\r\n"
+				if !strings.HasPrefix(requestLine, wantRequestPrefix) {
+					t.Fatalf("RTSP request = %q, want prefix %q", requestLine, wantRequestPrefix)
 				}
 			case <-time.After(time.Second):
 				t.Fatal("RTSP server received no DESCRIBE request on port 8554")
@@ -167,11 +178,10 @@ func startRTSPTestServerAtPort(t *testing.T, port int, response string) (probe.O
 				return
 			}
 			_ = connection.SetDeadline(time.Now().Add(3 * time.Second))
-			request := make([]byte, 2048)
-			n, _ := connection.Read(request)
-			if n > 0 {
+			requestLine, err := bufio.NewReader(connection).ReadString('\n')
+			if err == nil {
 				select {
-				case requests <- strings.SplitN(string(request[:n]), "\r\n", 2)[0]:
+				case requests <- requestLine:
 				default:
 				}
 				_, _ = io.WriteString(connection, response)
