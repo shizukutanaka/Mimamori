@@ -945,86 +945,13 @@ func makeFindings(
 
 	for i := range findings {
 		finding := &findings[i]
-		finding.Message = i18n.T(lang, finding.ID)
 		finding.Fix = i18n.T(lang, finding.ID+"_fix")
-		if finding.ID == "mqtt_anonymous" {
-			finding.Message = i18n.T(lang, finding.ID, finding.Device)
-		}
 		switch finding.ID {
-		case "telnet_open", "ftp_open", "vnc_open", "adb_open", "new_device", "new_device_private":
-			finding.Message = i18n.T(lang, finding.ID, finding.Device)
+		case "router_upnp":
+			finding.Message = i18n.T(lang, finding.ID)
 		case "port_forward", "port_forward_risky", "forward_camera", "forward_database":
 			finding.Message = i18n.T(lang, finding.ID, finding.Device, finding.Port)
-		case "smb1_enabled":
-			finding.Message = i18n.T(lang, finding.ID, finding.Device)
-		}
-		if finding.ID == "vnc_noauth" {
-			finding.Message = i18n.T(lang, finding.ID, finding.Device)
-		}
-		if finding.ID == "adb_noauth" {
-			finding.Message = i18n.T(lang, finding.ID, finding.Device)
-		}
-		if finding.ID == "go2rtc_noauth" {
-			finding.Message = i18n.T(lang, finding.ID, finding.Device)
-		}
-		if finding.ID == "frigate_noauth" {
-			finding.Message = i18n.T(lang, finding.ID, finding.Device)
-		}
-		if finding.ID == "nodered_noauth" {
-			finding.Message = i18n.T(lang, finding.ID, finding.Device)
-		}
-		if finding.ID == "homebridge_noauth" {
-			finding.Message = i18n.T(lang, finding.ID, finding.Device)
-		}
-		if finding.ID == "syncthing_noauth" {
-			finding.Message = i18n.T(lang, finding.ID, finding.Device)
-		}
-		if finding.ID == "transmission_noauth" {
-			finding.Message = i18n.T(lang, finding.ID, finding.Device)
-		}
-		if finding.ID == "jupyter_noauth" {
-			finding.Message = i18n.T(lang, finding.ID, finding.Device)
-		}
-		if finding.ID == "ollama_open" {
-			finding.Message = i18n.T(lang, finding.ID, finding.Device)
-		}
-		if finding.ID == "codeserver_noauth" {
-			finding.Message = i18n.T(lang, finding.ID, finding.Device)
-		}
-		if finding.ID == "esphome_noauth" {
-			finding.Message = i18n.T(lang, finding.ID, finding.Device)
-		}
-		if finding.ID == "docker_noauth" {
-			finding.Message = i18n.T(lang, finding.ID, finding.Device)
-		}
-		if finding.ID == "docker_tls_noverify" {
-			finding.Message = i18n.T(lang, finding.ID, finding.Device)
-		}
-		if finding.ID == "homeassistant_onboarding" {
-			finding.Message = i18n.T(lang, finding.ID, finding.Device)
-		}
-		if finding.ID == "zigbee2mqtt_noauth" {
-			finding.Message = i18n.T(lang, finding.ID, finding.Device)
-		}
-		if finding.ID == "moonraker_noauth" {
-			finding.Message = i18n.T(lang, finding.ID, finding.Device)
-		}
-		if finding.ID == "tasmota_noauth" {
-			finding.Message = i18n.T(lang, finding.ID, finding.Device)
-		}
-		if finding.ID == "shelly_noauth" {
-			finding.Message = i18n.T(lang, finding.ID, finding.Device)
-		}
-		if finding.ID == "wled_noauth" {
-			finding.Message = i18n.T(lang, finding.ID, finding.Device)
-		}
-		if finding.ID == "pihole_noauth" {
-			finding.Message = i18n.T(lang, finding.ID, finding.Device)
-		}
-	}
-	for i := range findings {
-		finding := &findings[i]
-		if finding.ID == "rtsp_noauth" {
+		default:
 			finding.Message = i18n.T(lang, finding.ID, finding.Device)
 		}
 	}
