@@ -18,8 +18,8 @@ Download the latest release from [GitHub Releases](https://github.com/shizukutan
 | --- | --- |
 | Most Windows PCs | `mimamori-<version>-windows-amd64.zip` |
 | Windows on ARM (for example, Snapdragon) | `mimamori-<version>-windows-arm64.zip` |
-| Mac with an Apple chip | `mimamori-<version>-darwin-arm64.tar.gz` |
-| Intel Mac | `mimamori-<version>-darwin-amd64.tar.gz` |
+| Mac with an Apple chip (Apple menu → About This Mac shows a "Chip" line) | `mimamori-<version>-darwin-arm64.tar.gz` |
+| Intel Mac (About This Mac shows a "Processor" line) | `mimamori-<version>-darwin-amd64.tar.gz` |
 | Most Linux PCs | `mimamori-<version>-linux-amd64.tar.gz` |
 | Older 32-bit Linux PCs | `mimamori-<version>-linux-386.tar.gz` |
 | 64-bit Raspberry Pi | `mimamori-<version>-linux-arm64.tar.gz` |
@@ -116,8 +116,8 @@ Mimamori は、自宅など自分で管理しているネットワークでだ�
 | --- | --- |
 | ほとんどの Windows PC | `mimamori-<version>-windows-amd64.zip` |
 | ARM 版 Windows（Snapdragon など） | `mimamori-<version>-windows-arm64.zip` |
-| Apple チップ搭載 Mac | `mimamori-<version>-darwin-arm64.tar.gz` |
-| Intel Mac | `mimamori-<version>-darwin-amd64.tar.gz` |
+| Apple チップ搭載 Mac（Apple メニュー →「この Mac について」に「チップ」の行がある） | `mimamori-<version>-darwin-arm64.tar.gz` |
+| Intel Mac（「この Mac について」に「プロセッサ」の行がある） | `mimamori-<version>-darwin-amd64.tar.gz` |
 | ほとんどの Linux PC | `mimamori-<version>-linux-amd64.tar.gz` |
 | 32 ビットの古い Linux PC | `mimamori-<version>-linux-386.tar.gz` |
 | 64 ビット Raspberry Pi | `mimamori-<version>-linux-arm64.tar.gz` |
