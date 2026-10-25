@@ -27,6 +27,8 @@ func ParseVersion(version []byte) (major, minor int, ok bool) {
 	return major, minor, true
 }
 
+// NoAuth reads the RFB version, echoes it and reports a server that offers security type 1 (None). Per RFC
+// 6143 servers offer None only when no password is configured; 3.3 servers send a single type, 3.7+ a list.
 func NoAuth(ctx context.Context, ip netip.Addr, port int, timeout time.Duration) bool {
 	if ctx == nil || !ip.IsValid() || port < 1 || port > 65535 || timeout <= 0 {
 		return false

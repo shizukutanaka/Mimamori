@@ -49,6 +49,9 @@ func ParseOnboarding(body []byte) bool {
 	return userStepOpen
 }
 
+// UserStepOpen reports a Home Assistant whose unauthenticated GET /api/onboarding lists the user step as
+// not done: until the first user exists, anyone can POST /api/onboarding/users and become the owner. The
+// endpoint is unregistered once onboarding finishes, so a finished instance is never flagged.
 func UserStepOpen(ctx context.Context, ip netip.Addr, port int, timeout time.Duration) bool {
 	if ctx == nil || !ip.Is4() || port < 1 || port > 65535 || timeout <= 0 {
 		return false

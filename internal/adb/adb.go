@@ -39,6 +39,9 @@ func ParseHeader(b []byte) (command, arg0, arg1, length uint32, ok bool) {
 	return command, arg0, arg1, length, true
 }
 
+// NoAuth sends one ADB CNXN (host::) and reports a daemon that answers CNXN instead of AUTH. adbd asks
+// for AUTH unless authentication is disabled (userdebug/eng builds or an unlocked device), so a CNXN reply
+// means anyone on the LAN gets a shell.
 func NoAuth(ctx context.Context, ip netip.Addr, port int, timeout time.Duration) bool {
 	if ctx == nil || !ip.IsValid() || port < 1 || port > 65535 || timeout <= 0 {
 		return false

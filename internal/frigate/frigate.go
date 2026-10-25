@@ -66,6 +66,9 @@ func ParseStats(body []byte) bool {
 	return true
 }
 
+// Unauthenticated reports a Frigate internal port whose GET /api/stats returns 200 with the service and
+// detector stats. Frigate treats every request on the internal port (5000) as the admin user, so exposing
+// it to the LAN exposes the configuration and all cameras.
 func Unauthenticated(ctx context.Context, ip netip.Addr, port int, timeout time.Duration) bool {
 	if ctx == nil || !ip.Is4() || port < 1 || port > 65535 || timeout <= 0 {
 		return false

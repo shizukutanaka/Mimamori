@@ -96,6 +96,9 @@ func ParseDescribeResponse(b []byte) (status int, hasSDP bool, ok bool) {
 	return status, hasSDP, true
 }
 
+// Unauthenticated sends one DESCRIBE and reports 200 with an SDP body on / (554), or additionally a 404 on
+// /mimamori (8554): go2rtc and MediaMTX check credentials before they look the stream up, so with a
+// password set the reply is 401 and a 404 means no password.
 func Unauthenticated(ctx context.Context, ip netip.Addr, port int, timeout time.Duration) bool {
 	if ctx == nil || !ip.IsValid() || port < 1 || port > 65535 || timeout <= 0 {
 		return false

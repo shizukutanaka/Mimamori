@@ -54,6 +54,9 @@ func isNegativeOneJSONNumber(raw json.RawMessage) bool {
 	return json.Unmarshal(raw, &number) == nil && number == -1
 }
 
+// Unauthenticated reports a Pi-hole v6 whose GET /api/auth answers 200 with a valid session, a null sid and
+// the message "no password set" (FTL's EMPTYPASS). The installer and the Docker image generate a password,
+// so this state means the password was cleared.
 func Unauthenticated(ctx context.Context, ip netip.Addr, port int, timeout time.Duration) bool {
 	if ctx == nil || !ip.Is4() || port < 1 || port > 65535 || timeout <= 0 {
 		return false

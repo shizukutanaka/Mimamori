@@ -31,6 +31,9 @@ func ParseVersion(status int, body []byte) bool {
 	return true
 }
 
+// Open reports an Ollama whose GET / says "Ollama is running" and whose GET /api/version returns a version.
+// Ollama has no authentication at all; it is reachable from the LAN only when OLLAMA_HOST was set to a
+// non-loopback address, which is why the finding is Caution rather than Danger.
 func Open(ctx context.Context, ip netip.Addr, port int, timeout time.Duration) bool {
 	if ctx == nil || !ip.Is4() || port < 1 || port > 65535 || timeout <= 0 {
 		return false

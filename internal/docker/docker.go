@@ -30,10 +30,15 @@ func ParseVersion(body []byte) bool {
 	return true
 }
 
+// Unauthenticated reports a Docker daemon on plain TCP that answers GET /version with its version JSON and
+// does not refuse OPTIONS /containers/create (401/403 would mean an authorization plugin). The daemon has
+// no built-in authentication on TCP, so this is full control of the host.
 func Unauthenticated(ctx context.Context, ip netip.Addr, port int, timeout time.Duration) bool {
 	return probeVersion(ctx, ip, port, timeout, "http", &http.Transport{Proxy: nil, DisableKeepAlives: true})
 }
 
+// UnauthenticatedTLS runs the same probe over TLS without a client certificate. A daemon started with
+// --tlsverify rejects the handshake, so a completed probe means client verification was turned off.
 func UnauthenticatedTLS(ctx context.Context, ip netip.Addr, port int, timeout time.Duration) bool {
 	return probeVersion(ctx, ip, port, timeout, "https", &http.Transport{
 		Proxy:             nil,

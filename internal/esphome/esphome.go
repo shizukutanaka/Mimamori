@@ -29,6 +29,8 @@ func ParseDevices(body []byte) bool {
 	return true
 }
 
+// Unauthenticated reports an ESPHome dashboard (today esphome/device-builder) whose GET /devices returns
+// 200 with the configured/importable lists; with a dashboard password set the same request gets 401.
 func Unauthenticated(ctx context.Context, ip netip.Addr, port int, timeout time.Duration) bool {
 	if ctx == nil || !ip.Is4() || port < 1 || port > 65535 || timeout <= 0 {
 		return false

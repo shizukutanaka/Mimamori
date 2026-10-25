@@ -50,6 +50,8 @@ func requestURL(ip netip.Addr, port int, path string) string {
 	return "http://" + address + path
 }
 
+// Unauthenticated reports a WLED whose GET /json/info identifies it and whose GET /update returns 200. With
+// a settings PIN or OTA lock, /update answers 401, so 200 means anyone can replace the firmware.
 func Unauthenticated(ctx context.Context, ip netip.Addr, port int, timeout time.Duration) bool {
 	if ctx == nil || !ip.Is4() || port < 1 || port > 65535 || timeout <= 0 {
 		return false

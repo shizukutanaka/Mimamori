@@ -19,6 +19,8 @@ func ParseConnack(b []byte) (code byte, ok bool) {
 	return b[3], true
 }
 
+// Anonymous sends an MQTT 3.1.1 CONNECT without credentials, reports CONNACK code 0 and sends
+// DISCONNECT. Mosquitto answers code 5 (not authorized) unless allow_anonymous is true.
 func Anonymous(ctx context.Context, ip netip.Addr, port int, timeout time.Duration) bool {
 	if ctx == nil || !ip.IsValid() || port < 1 || port > 65535 || timeout <= 0 {
 		return false

@@ -36,6 +36,8 @@ func ParseSettings(body []byte) bool {
 	return ok && !enabled
 }
 
+// Unauthenticated reports a homebridge-config-ui-x whose public GET /api/auth/settings says formAuth is
+// false, i.e. ui.auth was set to none; the default is form login.
 func Unauthenticated(ctx context.Context, ip netip.Addr, port int, timeout time.Duration) bool {
 	if ctx == nil || !ip.Is4() || port < 1 || port > 65535 || timeout <= 0 {
 		return false
