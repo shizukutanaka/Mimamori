@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -250,8 +251,9 @@ func startFakeWebSocketServer(t *testing.T, response fakeResponse) (int, <-chan 
 				return
 			}
 		}
+		// The client may close with our frame unread, which surfaces here as ECONNRESET rather than EOF.
 		serverResult.extra, err = io.ReadAll(reader)
-		if err != nil && !errors.Is(err, io.EOF) {
+		if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, syscall.ECONNRESET) {
 			serverResult.err = err
 		}
 	}()
