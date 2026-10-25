@@ -47,25 +47,6 @@ var ftpMessages = map[string]map[string]string{
 	},
 }
 
-var ftpCatalogTargets = map[string]map[string]string{
-	"en":      messages["en"],
-	"ja":      messages["ja"],
-	"zh-Hans": catalogZhHans,
-	"zh-Hant": catalogZhHant,
-	"es":      catalogEs,
-	"pt":      catalogPt,
-	"fr":      catalogFr,
-	"de":      catalogDe,
-	"ru":      catalogRu,
-	"ko":      catalogKo,
-	"id":      catalogId,
-}
-
 func init() {
-	for lang, catalog := range ftpCatalogTargets {
-		for key, value := range ftpMessages[lang] {
-			catalog[key] = value
-		}
-		messages[lang] = catalog
-	}
+	add(ftpMessages)
 }

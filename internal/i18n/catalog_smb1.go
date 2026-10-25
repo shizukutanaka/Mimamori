@@ -48,11 +48,5 @@ var smb1Messages = map[string]map[string]string{
 }
 
 func init() {
-	for lang, catalog := range smb1Messages {
-		target := wifiCatalogTargets[lang]
-		for key, value := range catalog {
-			target[key] = value
-		}
-		messages[lang] = target
-	}
+	add(smb1Messages)
 }

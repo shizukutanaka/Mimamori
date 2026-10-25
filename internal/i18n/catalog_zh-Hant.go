@@ -31,7 +31,3 @@ var catalogZhHant = map[string]string{
 	"points_recovered":       "（+%d 分）",
 	"press_enter":            "按 Enter 鍵即可關閉...",
 }
-
-func init() {
-	messages["zh-Hant"] = catalogZhHant
-}

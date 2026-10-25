@@ -133,11 +133,5 @@ func CheckedDeviceCount(lang string, count int) string {
 }
 
 func init() {
-	for lang, catalog := range checkedMessages {
-		target := wifiCatalogTargets[lang]
-		for key, value := range catalog {
-			target[key] = value
-		}
-		messages[lang] = target
-	}
+	add(checkedMessages)
 }

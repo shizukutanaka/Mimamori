@@ -31,7 +31,3 @@ var catalogId = map[string]string{
 	"points_recovered":       "(+%d poin)",
 	"press_enter":            "Tekan Enter untuk menutup...",
 }
-
-func init() {
-	messages["id"] = catalogId
-}

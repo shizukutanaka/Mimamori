@@ -47,26 +47,6 @@ var go2rtcMessages = map[string]map[string]string{
 	},
 }
 
-var go2rtcCatalogTargets = map[string]map[string]string{
-	"en":      messages["en"],
-	"ja":      messages["ja"],
-	"zh-Hans": catalogZhHans,
-	"zh-Hant": catalogZhHant,
-	"es":      catalogEs,
-	"pt":      catalogPt,
-	"fr":      catalogFr,
-	"de":      catalogDe,
-	"ru":      catalogRu,
-	"ko":      catalogKo,
-	"id":      catalogId,
-}
-
 func init() {
-	for lang, catalog := range go2rtcMessages {
-		target := go2rtcCatalogTargets[lang]
-		for key, value := range catalog {
-			target[key] = value
-		}
-		messages[lang] = target
-	}
+	add(go2rtcMessages)
 }
