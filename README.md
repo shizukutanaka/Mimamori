@@ -38,7 +38,7 @@ Linux:   sha256sum -c SHA256SUMS --ignore-missing
 Extract the archive before running Mimamori. The binaries are unsigned, so your operating system may show a first-run warning:
 
 - Windows SmartScreen: choose **More info → Run anyway**.
-- macOS: choose **System Settings → Privacy & Security → Open Anyway**, or run `xattr -d com.apple.quarantine ./mimamori`.
+- macOS: try to open it once (it will be blocked), then within an hour choose **System Settings → Privacy & Security → Open Anyway**; or run `xattr -d com.apple.quarantine ./mimamori`.
 - Linux: run `chmod +x ./mimamori`.
 
 For maintainers: run `VERSION=v0.1.0 scripts/dist.sh`, then upload `dist/*` to a GitHub Release.
@@ -136,7 +136,7 @@ Linux:   sha256sum -c SHA256SUMS --ignore-missing
 アーカイブを展開してから実行してください。バイナリは署名されていないため、初回起動時に OS の警告が出ることがあります。
 
 - Windows SmartScreen: **「詳細情報」→「実行」** を選びます。
-- macOS: **システム設定 → プライバシーとセキュリティ →「このまま開く」** を選ぶか、`xattr -d com.apple.quarantine ./mimamori` を実行します。
+- macOS: 一度開こうとして止められたあと（1 時間以内に）**システム設定 → プライバシーとセキュリティ →「このまま開く」** を選ぶか、`xattr -d com.apple.quarantine ./mimamori` を実行します。
 - Linux: `chmod +x ./mimamori` を実行します。
 
 メンテナー向け: `VERSION=v0.1.0 scripts/dist.sh` を実行し、`dist/*` を GitHub Release にアップロードしてください。
