@@ -839,7 +839,7 @@ func makeFindings(
 	for _, item := range opened {
 		name := deviceNames[item.IP]
 		if finding, known := portFindings[item.Port]; known {
-			finding.IP, finding.Device = item.IP.String(), name
+			finding.IP, finding.Device, finding.Port = item.IP.String(), name, originalPort(item.Port)
 			findings = append(findings, finding)
 			continue
 		}
@@ -853,19 +853,19 @@ func makeFindings(
 			} else if item.Service == "pihole" {
 				service = "pihole_noauth"
 			}
-			findings = append(findings, report.Finding{ID: service, Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name})
+			findings = append(findings, report.Finding{ID: service, Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name, Port: item.Port})
 		case 23, 2323:
 			if _, exists := telnetSeen[item.IP]; exists {
 				continue
 			}
 			telnetSeen[item.IP] = struct{}{}
-			findings = append(findings, report.Finding{ID: "telnet_open", Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name})
+			findings = append(findings, report.Finding{ID: "telnet_open", Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name, Port: item.Port})
 		case 554, 8554:
 			if _, exists := rtspSeen[item.IP]; exists {
 				continue
 			}
 			rtspSeen[item.IP] = struct{}{}
-			findings = append(findings, report.Finding{ID: "rtsp_noauth", Level: report.Caution, Points: 8, IP: item.IP.String(), Device: name})
+			findings = append(findings, report.Finding{ID: "rtsp_noauth", Level: report.Caution, Points: 8, IP: item.IP.String(), Device: name, Port: item.Port})
 		}
 	}
 	for ip, findingID := range newDeviceFindings {

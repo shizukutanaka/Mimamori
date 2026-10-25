@@ -2707,3 +2707,23 @@ func TestFetchDescriptionsPrefersGatewayDescription(t *testing.T) {
 		})
 	}
 }
+
+func TestMakeFindingsRecordsObservedPort(t *testing.T) {
+	ip := netip.MustParseAddr("192.168.1.40")
+	opened := []probe.Open{
+		{IP: ip, Port: 2323},
+		{IP: ip, Port: vncNoAuthPort},
+		{IP: ip, Port: 80, Service: "wled"},
+		{IP: ip, Port: 8554},
+	}
+	findings := makeFindings(opened, nil, netip.Addr{}, nil, nil, nil, nil, "en")
+	want := map[string]int{"telnet_open": 2323, "vnc_noauth": 5900, "wled_noauth": 80, "rtsp_noauth": 8554}
+	if len(findings) != len(want) {
+		t.Fatalf("makeFindings() returned %d findings, want %d", len(findings), len(want))
+	}
+	for _, finding := range findings {
+		if port, ok := want[finding.ID]; !ok || finding.Port != port {
+			t.Fatalf("finding %s has port %d, want %d", finding.ID, finding.Port, port)
+		}
+	}
+}
