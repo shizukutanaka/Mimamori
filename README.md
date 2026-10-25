@@ -43,8 +43,6 @@ Extract the archive before running Mimamori. The binaries are unsigned, so your 
 - macOS: try to open it once (it will be blocked), then within an hour choose **System Settings → Privacy & Security → Open Anyway**; or run `xattr -d com.apple.quarantine ./mimamori`.
 - Linux: run `chmod +x ./mimamori`.
 
-For maintainers: run `VERSION=v0.1.0 scripts/dist.sh`, then upload `dist/*` to a GitHub Release.
-
 After extracting, run Mimamori from a terminal:
 
 ```sh
@@ -96,6 +94,8 @@ go build -o mimamori .
 VERSION=v0.1.0 scripts/dist.sh
 ```
 
+`scripts/dist.sh` writes the release archives and `SHA256SUMS` to `dist/`; upload them to a GitHub Release.
+
 To add a language, add a catalog file in `internal/i18n` and list its code in `Supported()`.
 
 ---
@@ -145,8 +145,6 @@ Linux:   sha256sum -c SHA256SUMS --ignore-missing
 - macOS: 一度開こうとして止められたあと（1 時間以内に）**システム設定 → プライバシーとセキュリティ →「このまま開く」** を選ぶか、`xattr -d com.apple.quarantine ./mimamori` を実行します。
 - Linux: `chmod +x ./mimamori` を実行します。
 
-メンテナー向け: `VERSION=v0.1.0 scripts/dist.sh` を実行し、`dist/*` を GitHub Release にアップロードしてください。
-
 展開後、ターミナルから実行します。
 
 ```sh
@@ -190,5 +188,7 @@ Go 1.22 以降が必要です。Go 標準ライブラリ以外の依存はあり
 go build -o mimamori .
 VERSION=v0.1.0 scripts/dist.sh
 ```
+
+`scripts/dist.sh` はリリース用のアーカイブと `SHA256SUMS` を `dist/` に書き出します。これを GitHub Release にアップロードしてください。
 
 言語を追加する場合は `internal/i18n` にカタログファイルを追加し、`Supported()` にコードを登録してください。
