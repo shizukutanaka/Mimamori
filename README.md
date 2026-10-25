@@ -77,7 +77,7 @@ Devices
   192.168.1.1      aa:bb:cc:dd:ee:ff  Router
 ```
 
-If a device is listed only by its IP address, Mimamori could not learn its name. Your router's admin page or app usually lists connected devices with the same IP or MAC address; alternatively, unplug the device you suspect and run Mimamori again to see which line disappears.
+If a device is listed only by its IP address, Mimamori could not learn its name. Your router's admin page or app usually lists connected devices with the same IP or MAC address; alternatively, unplug the device you suspect, wait a minute or two (your PC remembers recently seen devices for a short while), and run Mimamori again to see which line disappears.
 
 Exit codes: `0` means no danger finding (caution findings may still be present), `2` means at least one danger finding, and `1` means a flag or operational error; it is also returned when no device could be checked, and a corrupt history file is kept as `devices.json.corrupt` (or `.corrupt.1`, `.corrupt.2`, … if older backups exist). A danger finding still returns `2` even if the device history cannot be saved. `0` is also returned when part of the check could not run; the text output then shows an incomplete notice and `--json` sets `"incomplete": true`, so scheduled scripts should check that field too.
 
@@ -158,7 +158,7 @@ macOS では、「ターミナル」と SSH からは、追加の許可なしで
 
 対応言語: 英語（`en`）、日本語（`ja`）、簡体字中国語（`zh-Hans`）、繁体字中国語（`zh-Hant`）、スペイン語（`es`）、ポルトガル語（`pt`）、フランス語（`fr`）、ドイツ語（`de`）、ロシア語（`ru`）、韓国語（`ko`）、インドネシア語（`id`）。言語は `LANGUAGE`、`LC_ALL`、`LC_MESSAGES`、`LANG` の順で自動判定し、これらが空の場合は Windows では表示言語、macOS では「システム設定 → 一般 → 言語と地域」の優先する言語を使います。`--lang pt-BR` や `--lang zh_TW` のように、言語コードや地域タグで指定できます。`--json` で整形済み JSON を出力できます。JSON の `checked`（`ports`・`port_forwards`・`wifi`）は実際に確認できた項目を示し、`false` は「安全」ではなく「確認できなかった」という意味です。
 
-機器が IP アドレスだけで表示されるのは、名前を取得できなかった機器です。ルーターの管理画面やアプリの接続機器一覧に、同じ IP アドレスか MAC アドレスで載っていることが多いです。見当がつかなければ、疑わしい機器の電源を切ってもう一度実行し、消えた行を確かめてください。
+機器が IP アドレスだけで表示されるのは、名前を取得できなかった機器です。ルーターの管理画面やアプリの接続機器一覧に、同じ IP アドレスか MAC アドレスで載っていることが多いです。見当がつかなければ、疑わしい機器の電源を切り、1〜2 分待ってから（PC は最近見た機器をしばらく覚えています）もう一度実行し、消えた行を確かめてください。
 
 終了コード: `0` は危険な問題なし（注意事項が表示される場合があります）、`2` は危険な問題あり、`1` はオプションまたは動作上のエラーです。確認できる機器がなかった場合にも `1` が返され、壊れた履歴ファイルは `devices.json.corrupt`（古いバックアップがある場合は `.corrupt.1`、`.corrupt.2` など）として残されます。履歴を保存できなかった場合でも、危険な問題があれば `2` を返します。確認の一部ができなかった場合も `0` を返します。その場合は、画面に「不完全な可能性」の案内が表示され、`--json` では `"incomplete": true` になります。定期実行のスクリプトでは、この項目も確かめてください。
 
