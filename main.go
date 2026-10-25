@@ -472,7 +472,7 @@ func loadHistory(path string, pathErr error) (baseline.Store, bool, error) {
 }
 
 func printNoDeviceError(writer io.Writer, lang string, wifiErr error) {
-	fmt.Fprintln(writer, "error: the scan could not see any device on your network; the result would not be reliable")
+	fmt.Fprintln(writer, i18n.T(lang, "no_devices_notice"))
 	if errors.Is(wifiErr, wifi.ErrLocationPermission) {
 		fmt.Fprintln(writer, i18n.T(lang, "wifi_location_notice"))
 	}

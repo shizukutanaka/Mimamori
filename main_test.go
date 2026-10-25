@@ -2553,7 +2553,7 @@ func TestWiFiLocationRequiredTextAndJSON(t *testing.T) {
 }
 
 func TestPrintNoDeviceError(t *testing.T) {
-	const errorLine = "error: the scan could not see any device on your network; the result would not be reliable"
+	const errorLine = "家のネットワークに機器が 1 台も見つからなかったため、結果を信頼できません。この PC が自宅のネットワークに接続していることを確認して、もう一度実行してください。"
 	locationNotice := i18n.T("ja", "wifi_location_notice")
 	tests := []struct {
 		name       string
