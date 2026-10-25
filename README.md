@@ -6,7 +6,7 @@ It checks devices visible in the local neighbor table, the default gateway, UPnP
 "Safe" means none of the risks listed above was found. Mimamori does not check for malware on your PCs, phishing, router firmware updates, or the strength of your Wi-Fi password; keep doing those as before.
 
 
-Mimamori never changes settings, contacts the Internet, or sends telemetry. Network discovery and checks stay on the private LAN. Its only persistent data is a local device-history file, used to report newly seen devices. It stores each device's MAC address, last IP address, name, and first/last seen dates at `%APPDATA%\Mimamori\devices.json` (Windows), `~/Library/Application Support/Mimamori/devices.json` (macOS), or `~/.config/Mimamori/devices.json` (Linux), readable only by your user account. Delete that file to forget all devices, for example before giving the PC away.
+Mimamori never changes settings, contacts the Internet, or sends telemetry. Network discovery and checks stay on the private LAN. Its only persistent data is a local device-history file, used to report newly seen devices. It stores each device's MAC address, last IP address, name, and first/last seen dates at `%APPDATA%\Mimamori\devices.json` (Windows), `~/Library/Application Support/Mimamori/devices.json` (macOS), or `~/.config/Mimamori/devices.json` (Linux), readable only by your user account. Delete that file to forget all devices, for example before giving the PC away. Also delete it after you change the Wi-Fi password because of an unrecognized device: devices already in the history are never reported as new again, so starting fresh makes the next run report anything that comes back.
 
 On Linux, the Wi-Fi security check uses `nmcli`, falling back to `wpa_cli status` when NetworkManager is unavailable.
 
@@ -106,7 +106,7 @@ Mimamori は「今、家のネットワークは安全だろうか？」とい�
 「安全」は、上に挙げた危険が見つからなかったという意味です。PC のウイルス、フィッシング、ルーターのファームウェアの更新、Wi-Fi のパスワードの強さは確認しません。これらはこれまでどおり気をつけてください。
 
 
-設定を変更せず、インターネットへ接続せず、利用状況も送信しません。機器の確認は家のネットワーク内だけで行います。保存するのは、新しい機器を次回から知らせるための機器履歴ファイルだけです。このファイルには、機器ごとの MAC アドレス・最後の IP アドレス・名前・初めて見た日と最後に見た日が入り、`%APPDATA%\Mimamori\devices.json`（Windows）、`~/Library/Application Support/Mimamori/devices.json`（macOS）、`~/.config/Mimamori/devices.json`（Linux）に、自分のアカウントだけが読める権限で置かれます。PC を手放すときなど、記録を消したい場合はこのファイルを削除してください。
+設定を変更せず、インターネットへ接続せず、利用状況も送信しません。機器の確認は家のネットワーク内だけで行います。保存するのは、新しい機器を次回から知らせるための機器履歴ファイルだけです。このファイルには、機器ごとの MAC アドレス・最後の IP アドレス・名前・初めて見た日と最後に見た日が入り、`%APPDATA%\Mimamori\devices.json`（Windows）、`~/Library/Application Support/Mimamori/devices.json`（macOS）、`~/.config/Mimamori/devices.json`（Linux）に、自分のアカウントだけが読める権限で置かれます。PC を手放すときなど、記録を消したい場合はこのファイルを削除してください。心当たりのない機器が出て Wi-Fi のパスワードを変えたあとも、このファイルを消してください。履歴に入った機器は二度と「新しい機器」として知らせないので、初回からやり直せば、戻ってきた機器を次回に知らせます。
 
 Linux では Wi-Fi の安全方式を `nmcli` で確認し、NetworkManager が利用できない場合は `wpa_cli status` を使います。
 
