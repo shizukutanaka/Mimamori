@@ -417,10 +417,9 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 	findings = markAnonymousFTP(findings, anonymousFTPHosts(ctx, opened), lang)
 	findings = append(findings, wifiFs...)
 	findings = append(findings, gatewaySpoofFindings(gatewayNeighbors(ctx, neighbors, gatewayIP, lan.ReadARP), gatewayIP, lang)...)
-	report.Sort(findings)
 	findings = append(findings, vulnerableUPnPStackFindings(discovery.responses, gatewayIP, deviceNames, lang)...)
 	report.Sort(findings)
-	status := report.Status(report.Score(findings), findings)
+	status := report.Status(findings)
 	result := output{
 		Version: version, Score: report.Score(findings), Status: status, FirstRun: firstRun, Incomplete: incomplete,
 		HistoryUnavailable:   loadState == historyLoadUnavailable,

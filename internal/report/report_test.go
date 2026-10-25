@@ -27,7 +27,7 @@ func TestStatus(t *testing.T) {
 		{[]Finding{{Level: Danger}}, "danger"},
 	}
 	for _, test := range tests {
-		if got := Status(100, test.findings); got != test.want {
+		if got := Status(test.findings); got != test.want {
 			t.Errorf("Status() = %q, want %q", got, test.want)
 		}
 	}
