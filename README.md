@@ -62,6 +62,8 @@ Supported languages: English (`en`), Japanese (`ja`), Simplified Chinese (`zh-Ha
 
 Many fixes say "in the router settings": open a browser and go to the address shown on the Router line of the device list (for example `http://192.168.1.1`), or use your router maker's app. The login details are usually printed on a label on the router.
 
+If the fix is not possible on that device (for example, an ISP-provided router, TV, or recorder with no such setting), update its firmware and ask the manufacturer or your ISP; if the finding remains, consider replacing the device. Mimamori keeps reporting it until the service is actually turned off.
+
 Example:
 
 ```text
@@ -165,6 +167,8 @@ macOS では、「ターミナル」と SSH からは、追加の許可なしで
 Windows では、タスク スケジューラーから直接起動した場合も、ダブルクリックと同じく Enter キーを待ち、タスクが終わらないことがあります。定期実行では `--json` を付けてください（`--json` では待ちません）。
 
 直し方に「ルーターの設定で」とあるときは、機器一覧の「ルーター」の行にあるアドレス（例: `http://192.168.1.1`）をブラウザで開くか、ルーターのメーカーのアプリを使います。ログイン情報はルーター本体のラベルに書かれていることが多いです。
+
+直し方がその機器では実行できない場合（ISP のレンタルルーター、テレビ、レコーダーなど、設定項目がない機器）は、ファームウェアを更新し、メーカーや ISP に問い合わせてください。それでも残るなら買い替えを検討してください。Mimamori はサービスが実際に止まるまで知らせ続けます。
 
 ```text
 Mimamori — 家の安全診断  v0.1.0
