@@ -236,14 +236,16 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 	}
 	phase1Hosts := collectHosts(arp.neighbors, gatewayIP, nil, scope)
 	type phase1ScanResult struct {
-		targets []netip.Addr
-		opened  []probe.Open
+		targets   []netip.Addr
+		sweepOnly []netip.Addr
+		opened    []probe.Open
 	}
 	phase1Ch := make(chan phase1ScanResult, 1)
 	go func() {
 		phase1Targets := phase1Hosts
+		var sweepOnly []netip.Addr
 		if gatewayIP.IsValid() {
-			sweepOnly := withoutHosts(scanSweepHosts(prefixes, scope, gatewayIP), phase1Hosts)
+			sweepOnly = withoutHosts(scanSweepHosts(prefixes, scope, gatewayIP), phase1Hosts)
 			if len(sweepOnly) > 0 {
 				responded := probe.Alive(ctx, sweepOnly, 80, 700*time.Millisecond, 128)
 				refreshed, err := lan.ReadARP(ctx)
@@ -251,7 +253,7 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 			}
 		}
 		opened := probe.Scan(ctx, phase1Targets, scanPorts, 700*time.Millisecond, 128)
-		phase1Ch <- phase1ScanResult{targets: phase1Targets, opened: opened}
+		phase1Ch <- phase1ScanResult{targets: phase1Targets, sweepOnly: sweepOnly, opened: opened}
 	}()
 
 	discovery := <-ssdpCh
@@ -284,13 +286,25 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 	phase1 := <-phase1Ch
 	phase1Targets := phase1.targets
 	opened := phase1.opened
+	neighbors := arp.neighbors
+	var lateSweep []netip.Addr
+	if len(phase1.sweepOnly) > 0 {
+		refreshed, err := lan.ReadARP(ctx)
+		if err != nil {
+			fmt.Fprintf(stderr, "warning: cannot refresh the neighbor table: %v\n", err)
+		} else {
+			neighbors = mergeNeighbors(neighbors, refreshed)
+			lateSweep = lateSweepHosts(phase1.sweepOnly, phase1Targets, refreshed)
+		}
+	}
 	allHosts := collectHosts(arp.neighbors, gatewayIP, discovery.responses, scope)
 	extra := withoutHosts(allHosts, phase1Targets)
+	extra = append(extra, withoutHosts(lateSweep, extra)...)
 	if len(extra) > 0 {
 		opened = append(opened, probe.Scan(ctx, extra, scanPorts, 700*time.Millisecond, 128)...)
 	}
 	phase1SweepHosts := withoutHosts(phase1Targets, phase1Hosts)
-	scanTargets := mergeHosts(allHosts, phase1SweepHosts)
+	scanTargets := mergeHosts(allHosts, append(phase1SweepHosts, lateSweep...))
 	scanTargetHosts := make(map[netip.Addr]struct{}, len(scanTargets))
 	for _, host := range scanTargets {
 		scanTargetHosts[host] = struct{}{}
@@ -302,15 +316,6 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 		}
 	}
 	opened = filteredOpened
-	neighbors := arp.neighbors
-	if len(phase1Targets) > len(phase1Hosts) {
-		refreshed, err := lan.ReadARP(ctx)
-		if err != nil {
-			fmt.Fprintf(stderr, "warning: cannot refresh the neighbor table: %v\n", err)
-		} else {
-			neighbors = mergeNeighbors(neighbors, refreshed)
-		}
-	}
 	nameNeighbors := reportNeighbors(neighbors, prefixes, prefixesFailed, gatewayIP)
 	nameHosts := deviceHosts(nameNeighbors, gatewayIP, discovery.responses, opened)
 	resolvedNamesCh := make(chan map[netip.Addr]string, 1)
@@ -643,6 +648,12 @@ func liveSweepHosts(sweep []netip.Addr, responded map[netip.Addr]struct{}, neigh
 		}
 	}
 	return live
+}
+
+// lateSweepHosts returns swept addresses that were not scanned in the first pass but appeared in the
+// neighbor table afterwards: a sleeping Wi-Fi device can answer ARP after the 80-port probe gave up.
+func lateSweepHosts(sweep, scanned []netip.Addr, neighbors []lan.Neighbor) []netip.Addr {
+	return liveSweepHosts(withoutHosts(sweep, scanned), nil, neighbors, nil)
 }
 
 func mergeNeighbors(original, refreshed []lan.Neighbor) []lan.Neighbor {
