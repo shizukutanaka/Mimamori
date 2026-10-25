@@ -3,6 +3,7 @@ package tasmota
 import (
 	"context"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
@@ -146,5 +147,20 @@ func TestRequestURL(t *testing.T) {
 				t.Fatalf("requestURL() = %q, want %q", got, test.want)
 			}
 		})
+	}
+}
+
+func TestProbeReportsWhetherHostResponded(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	port := server.Listener.Addr().(*net.TCPAddr).Port
+	ip := netip.MustParseAddr("127.0.0.1")
+	if unauthenticated, responded := Probe(context.Background(), ip, port, time.Second); unauthenticated || !responded {
+		t.Fatalf("Probe() = (%v, %v) for a 404 page, want (false, true)", unauthenticated, responded)
+	}
+	server.Close()
+	if unauthenticated, responded := Probe(context.Background(), ip, port, time.Second); unauthenticated || responded {
+		t.Fatalf("Probe() = (%v, %v) for a closed port, want (false, false)", unauthenticated, responded)
 	}
 }

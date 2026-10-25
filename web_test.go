@@ -3,11 +3,14 @@ package main
 import (
 	"context"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/shizukutanaka/Mimamori/internal/probe"
 )
@@ -132,5 +135,41 @@ func TestMarkUnauthenticatedWebCanceledContextPreservesOtherPorts(t *testing.T) 
 	got := markUnauthenticatedWeb(ctx, []probe.Open{webOpen, otherOpen})
 	if len(got) != 1 || got[0] != otherOpen {
 		t.Fatalf("markUnauthenticatedWeb() = %v, want only unrelated port %v", got, otherOpen)
+	}
+}
+
+func TestMarkUnauthenticatedWebStopsAfterSilentHost(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	var connections atomic.Int32
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			connections.Add(1)
+			go func() {
+				time.Sleep(30 * time.Second)
+				conn.Close()
+			}()
+		}
+	}()
+	port := listener.Addr().(*net.TCPAddr).Port
+	ip := netip.MustParseAddr("127.0.0.1")
+	start := time.Now()
+	got := markUnauthenticatedWebWithPort(context.Background(), []probe.Open{{IP: ip, Port: 80}}, port)
+	elapsed := time.Since(start)
+	if len(got) != 0 {
+		t.Fatalf("markUnauthenticatedWebWithPort() = %v, want no services for a silent host", got)
+	}
+	if connections.Load() != 1 {
+		t.Fatalf("connections = %d, want 1 (later probes skipped once the host never answered)", connections.Load())
+	}
+	if elapsed >= 6*time.Second {
+		t.Fatalf("elapsed = %s, want a single probe timeout (under 6s)", elapsed)
 	}
 }
