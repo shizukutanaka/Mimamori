@@ -65,6 +65,8 @@ func hasFlowWritePermission(permissions json.RawMessage) bool {
 	return false
 }
 
+// Unauthenticated reports a Node-RED editor whose GET /settings returns 200 with httpNodeRoot and version;
+// with adminAuth configured the same request gets 401, and ParseSettings drops a read-only anonymous user.
 func Unauthenticated(ctx context.Context, ip netip.Addr, port int, timeout time.Duration) bool {
 	if ctx == nil || !ip.Is4() || port < 1 || port > 65535 || timeout <= 0 {
 		return false

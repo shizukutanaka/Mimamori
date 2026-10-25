@@ -20,6 +20,9 @@ func ParseConflict(status int, headerID string, body []byte) bool {
 	return bytes.Contains(body, []byte("X-Transmission-Session-Id: "+headerID))
 }
 
+// Unauthenticated reports a Transmission RPC that answers GET /transmission/rpc with 409 and an
+// X-Transmission-Session-Id. The whitelist (403) and password (401) checks come before the 409 handshake,
+// so reaching it means neither applies to this PC.
 func Unauthenticated(ctx context.Context, ip netip.Addr, port int, timeout time.Duration) bool {
 	if ctx == nil || !ip.Is4() || port < 1 || port > 65535 || timeout <= 0 {
 		return false

@@ -29,6 +29,9 @@ func ParseMeta(body []byte, headerID string) bool {
 	return metadata.DeviceID != nil && *metadata.DeviceID != "" && *metadata.DeviceID == headerID
 }
 
+// Unauthenticated reports a Syncthing GUI whose GET /meta.js returns 200 naming this device (the body's
+// deviceID must match the X-Syncthing-ID header). /meta.js is outside the no-auth paths, so it returns
+// 401/403 once a GUI user and password are set.
 func Unauthenticated(ctx context.Context, ip netip.Addr, port int, timeout time.Duration) bool {
 	if ctx == nil || !ip.Is4() || port < 1 || port > 65535 || timeout <= 0 {
 		return false

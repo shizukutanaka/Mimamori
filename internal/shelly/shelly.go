@@ -54,6 +54,9 @@ func requestURL(ip netip.Addr, port int) string {
 	return "http://" + address + "/shelly"
 }
 
+// Unauthenticated reports a Shelly whose GET /shelly (followed through the HTTPS redirect of newer
+// firmware) returns device info with authentication disabled. /shelly itself is public on every
+// generation, so the auth flag in the reply, not the 200, is the evidence.
 func Unauthenticated(ctx context.Context, ip netip.Addr, port int, timeout time.Duration) bool {
 	return unauthenticated(ctx, ip, port, 443, timeout)
 }

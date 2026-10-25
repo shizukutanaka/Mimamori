@@ -39,6 +39,9 @@ func ParseMessage(payload []byte) bool {
 	return ok
 }
 
+// Unauthenticated opens the frontend WebSocket (GET /api with Upgrade) and reads one frame. A text frame
+// with a bridge/… topic means the frontend accepted the connection without auth_token (the default is
+// none); with a token set the handshake is rejected.
 func Unauthenticated(ctx context.Context, ip netip.Addr, port int, timeout time.Duration) bool {
 	if ctx == nil || !ip.Is4() || port < 1 || port > 65535 || timeout <= 0 {
 		return false

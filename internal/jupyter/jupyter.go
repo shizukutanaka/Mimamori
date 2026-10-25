@@ -42,6 +42,8 @@ func isJSONNumber(raw json.RawMessage) bool {
 	return ok
 }
 
+// Unauthenticated reports a Jupyter server whose GET /api/status returns 200. The handler requires
+// authentication, so 200 without a token means both the token and the password are disabled.
 func Unauthenticated(ctx context.Context, ip netip.Addr, port int, timeout time.Duration) bool {
 	if ctx == nil || !ip.Is4() || port < 1 || port > 65535 || timeout <= 0 {
 		return false

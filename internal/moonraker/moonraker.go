@@ -32,6 +32,9 @@ func isNonEmptyString(raw json.RawMessage) bool {
 	return json.Unmarshal(raw, &value) == nil && value != ""
 }
 
+// Unauthenticated reports a Moonraker whose GET /server/info returns 200 with moonraker_version. The
+// endpoint requires authorization, so 200 means this PC is in trusted_clients (MainsailOS trusts every
+// private range by default); an untrusted client gets 401.
 func Unauthenticated(ctx context.Context, ip netip.Addr, port int, timeout time.Duration) bool {
 	if ctx == nil || !ip.Is4() || port < 1 || port > 65535 || timeout <= 0 {
 		return false

@@ -66,6 +66,8 @@ func readReplyLine(reader *bufio.Reader) ([]byte, bool) {
 	}
 }
 
+// Anonymous logs in with USER anonymous / PASS mimamori@, reports a 230 reply and sends QUIT. Servers
+// answer USER anonymous with 331 whether or not anonymous access is allowed, so only the PASS reply tells.
 func Anonymous(ctx context.Context, ip netip.Addr, port int, timeout time.Duration) bool {
 	if ctx == nil || !ip.IsValid() || port < 1 || port > 65535 || timeout <= 0 {
 		return false

@@ -51,6 +51,8 @@ func LoginRedirectsHome(status int, location string) bool {
 	return (resolved.Host == "" || resolved.Host == base.Host) && resolved.Path == "/"
 }
 
+// Unauthenticated reports a code-server whose /healthz answers and whose /login is absent or sends the
+// browser back to /. With the default `auth: password` the login page is served, so this means `auth: none`.
 func Unauthenticated(ctx context.Context, ip netip.Addr, port int, timeout time.Duration) bool {
 	if ctx == nil || !ip.Is4() || port < 1 || port > 65535 || timeout <= 0 {
 		return false

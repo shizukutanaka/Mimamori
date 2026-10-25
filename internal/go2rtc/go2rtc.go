@@ -37,6 +37,8 @@ func ParseAPIInfo(status int, body []byte) bool {
 	return ok && json.Unmarshal(raw, &rtsp) == nil && rtsp.Listen != nil
 }
 
+// Unauthenticated reports a go2rtc whose GET /api returns 200 with version and revision. go2rtc checks
+// credentials only when api.username is set, and the open API can add exec: sources that run commands.
 func Unauthenticated(ctx context.Context, ip netip.Addr, port int, timeout time.Duration) bool {
 	if ctx == nil || !ip.Is4() || port < 1 || port > 65535 || timeout <= 0 {
 		return false

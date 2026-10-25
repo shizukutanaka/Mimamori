@@ -17,6 +17,9 @@ const (
 	smbCommandNegotiate byte = 0x72
 )
 
+// SMB1Enabled sends one SMB1 NEGOTIATE that offers a single dialect and reports a status-0 SMB1 reply that
+// selects it. Servers with SMBv1 disabled answer with SMB2 or refuse the dialect, so this proves SMBv1 is
+// still enabled (EternalBlue-class exposure).
 func SMB1Enabled(ctx context.Context, ip netip.Addr, port int, timeout time.Duration) bool {
 	if ctx == nil || !ip.IsValid() || port < 1 || port > 65535 || timeout <= 0 {
 		return false
