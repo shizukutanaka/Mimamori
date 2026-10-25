@@ -6,8 +6,8 @@ var transmissionMessages = map[string]map[string]string{
 		"transmission_noauth_fix": "Turn on RPC authentication with a username and password in Transmission (for the linuxserver.io Docker image, set USER and PASS).",
 	},
 	"ja": {
-		"transmission_noauth":     "「%s」の Transmission の操作窓口（9091番）は、合言葉なしで家のネットワークに開いています。家の誰でも、ファイルの保存先を変えたり、取り込みが終わったときに動かすプログラムを設定したりできる状態です。",
-		"transmission_noauth_fix": "Transmission の設定で、操作窓口のユーザー名と合言葉を設定してください（linuxserver.io の Docker なら USER と PASS）。",
+		"transmission_noauth":     "「%s」の Transmission の操作窓口（9091番）は、パスワードなしで家のネットワークに開いています。家の誰でも、ファイルの保存先を変えたり、取り込みが終わったときに動かすプログラムを設定したりできる状態です。",
+		"transmission_noauth_fix": "Transmission の設定で、操作窓口のユーザー名とパスワードを設定してください（linuxserver.io の Docker なら USER と PASS）。",
 	},
 	"zh-Hans": {
 		"transmission_noauth":     "%s 上的 Transmission 远程控制（端口 9091）在没有密码的情况下接受来自您网络的命令。家中任何人都可以更改文件保存位置，并设置下载完成后运行的程序。",

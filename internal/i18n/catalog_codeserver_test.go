@@ -35,7 +35,7 @@ func TestCodeServerCatalogCoverage(t *testing.T) {
 	if got := T("en", "codeserver_noauth_fix"); got != "Set the PASSWORD or HASHED_PASSWORD environment variable for the container and restart it (don't start it with --auth none)." {
 		t.Errorf("English code-server fix = %q", got)
 	}
-	if got := T("ja", "codeserver_noauth", "書斎"); got != "「書斎」の code-server（ブラウザで使う VS Code、8443番）は、合言葉なしで家のネットワークに開いています。家の誰でも、ブラウザから端末を開き、好きな命令を実行できる状態です。" {
+	if got := T("ja", "codeserver_noauth", "書斎"); got != "「書斎」の code-server（ブラウザで使う VS Code、8443番）は、パスワードなしで家のネットワークに開いています。家の誰でも、ブラウザから端末を開き、好きな命令を実行できる状態です。" {
 		t.Errorf("Japanese code-server message = %q", got)
 	}
 	if got := T("ja", "codeserver_noauth_fix"); got != "Docker の環境変数 PASSWORD か HASHED_PASSWORD を設定して、起動し直してください（--auth none で起動しない）。" {

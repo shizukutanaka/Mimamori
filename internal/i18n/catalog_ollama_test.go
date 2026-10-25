@@ -35,7 +35,7 @@ func TestOllamaCatalogCoverage(t *testing.T) {
 	if got := T("en", "ollama_open_fix"); got != "If no other device needs it, set OLLAMA_HOST to 127.0.0.1:11434 (for Docker, publish with -p 127.0.0.1:11434:11434). In the Windows or Mac app, turn off \"Expose Ollama to the network\" in Settings." {
 		t.Errorf("English Ollama fix = %q", got)
 	}
-	if got := T("ja", "ollama_open", "居間"); got != "「居間」の Ollama（ローカルの AI、11434番）は、合言葉のしくみがないまま家のネットワークに開いています。家の誰でも、この PC の GPU で AI を動かしたり、モデルを消したりできます。ollama.com にサインインしていれば、その枠のクラウドのモデルも使えます。" {
+	if got := T("ja", "ollama_open", "居間"); got != "「居間」の Ollama（ローカルの AI、11434番）は、パスワードのしくみがないまま家のネットワークに開いています。家の誰でも、この PC の GPU で AI を動かしたり、モデルを消したりできます。ollama.com にサインインしていれば、その枠のクラウドのモデルも使えます。" {
 		t.Errorf("Japanese Ollama message = %q", got)
 	}
 	if got := T("ja", "ollama_open_fix"); got != "ほかの機器から使わないなら、OLLAMA_HOST を 127.0.0.1:11434 にしてください（Docker なら -p 127.0.0.1:11434:11434）。Windows・Mac のアプリなら、設定の「Expose Ollama to the network」を切ってください。" {

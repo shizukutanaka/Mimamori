@@ -6,8 +6,8 @@ var piholeMessages = map[string]map[string]string{
 		"pihole_noauth_fix": "Set a password in the Pi-hole admin page or with `pihole setpassword`.",
 	},
 	"ja": {
-		"pihole_noauth":     "「%s」の Pi-hole（80番）は、管理画面の合言葉が空です。家のネットワークの誰でも DNS の設定を書き換えて、家じゅうの機器を偽のサイトへ向けられる状態です。",
-		"pihole_noauth_fix": "Pi-hole の管理画面か `pihole setpassword` で、合言葉を設定してください。",
+		"pihole_noauth":     "「%s」の Pi-hole（80番）は、管理画面のパスワードが空です。家のネットワークの誰でも DNS の設定を書き換えて、家じゅうの機器を偽のサイトへ向けられる状態です。",
+		"pihole_noauth_fix": "Pi-hole の管理画面か `pihole setpassword` で、パスワードを設定してください。",
 	},
 	"zh-Hans": {
 		"pihole_noauth":     "%s 上的 Pi-hole（端口 80）管理员密码为空。您网络中的任何人都可以更改其 DNS 设置，将家中所有设备引导至虚假网站。",
