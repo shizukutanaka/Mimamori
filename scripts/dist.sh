@@ -124,7 +124,6 @@ build() {
 
 build windows amd64
 build windows arm64
-build windows 386
 build linux amd64
 build linux 386 softfloat
 build linux arm64
