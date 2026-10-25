@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"sync"
+	"net/netip"
 	"time"
 
 	"github.com/shizukutanaka/Mimamori/internal/docker"
@@ -10,58 +10,10 @@ import (
 )
 
 func markUnauthenticatedDocker(ctx context.Context, opened []probe.Open) []probe.Open {
-	candidates := make([]int, 0, len(opened))
-	for index, candidate := range opened {
-		if candidate.Port == 2375 || candidate.Port == 2376 {
-			candidates = append(candidates, index)
+	return keepIfConfirmed(ctx, opened, []int{2375, 2376}, func(ctx context.Context, ip netip.Addr, port int, timeout time.Duration) bool {
+		if port == 2376 {
+			return docker.UnauthenticatedTLS(ctx, ip, port, timeout)
 		}
-	}
-	workers := 16
-	if len(candidates) == 0 {
-		return opened
-	}
-	if len(candidates) < workers {
-		workers = len(candidates)
-	}
-	jobs := make(chan int)
-	results := make(chan int, len(candidates))
-	var wait sync.WaitGroup
-	wait.Add(workers)
-	for range workers {
-		go func() {
-			defer wait.Done()
-			for index := range jobs {
-				candidate := opened[index]
-				isUnauthenticated := candidate.Port == 2375 && docker.Unauthenticated(ctx, candidate.IP, candidate.Port, 2*time.Second)
-				isUnauthenticated = isUnauthenticated || candidate.Port == 2376 && docker.UnauthenticatedTLS(ctx, candidate.IP, candidate.Port, 2*time.Second)
-				if isUnauthenticated {
-					results <- index
-				}
-			}
-		}()
-	}
-	go func() {
-		defer close(jobs)
-		for _, index := range candidates {
-			select {
-			case jobs <- index:
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
-
-	wait.Wait()
-	close(results)
-	unauthenticated := make([]bool, len(opened))
-	for index := range results {
-		unauthenticated[index] = true
-	}
-	filtered := make([]probe.Open, 0, len(opened))
-	for index, candidate := range opened {
-		if (candidate.Port != 2375 && candidate.Port != 2376) || unauthenticated[index] {
-			filtered = append(filtered, candidate)
-		}
-	}
-	return filtered
+		return docker.Unauthenticated(ctx, ip, port, timeout)
+	})
 }

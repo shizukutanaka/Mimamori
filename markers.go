@@ -2,8 +2,11 @@ package main
 
 import (
 	"context"
+	"net/netip"
+	"slices"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/shizukutanaka/Mimamori/internal/probe"
 )
@@ -39,6 +42,60 @@ var serviceMarkers = []portMarker{
 
 func markUnchanged(_ context.Context, opened []probe.Open) []probe.Open {
 	return opened
+}
+
+// keepIfConfirmed re-checks every opened port in ports with confirm, 16 hosts at a time, and drops the
+// ones confirm rejects. Ports outside the list pass through unchanged, and the order is preserved.
+func keepIfConfirmed(ctx context.Context, opened []probe.Open, ports []int, confirm func(context.Context, netip.Addr, int, time.Duration) bool) []probe.Open {
+	candidates := make([]int, 0, len(opened))
+	for index, candidate := range opened {
+		if slices.Contains(ports, candidate.Port) {
+			candidates = append(candidates, index)
+		}
+	}
+	if len(candidates) == 0 {
+		return opened
+	}
+	workers := min(16, len(candidates))
+	jobs := make(chan int)
+	results := make(chan int, len(candidates))
+	var wait sync.WaitGroup
+	wait.Add(workers)
+	for range workers {
+		go func() {
+			defer wait.Done()
+			for index := range jobs {
+				candidate := opened[index]
+				if confirm(ctx, candidate.IP, candidate.Port, 2*time.Second) {
+					results <- index
+				}
+			}
+		}()
+	}
+	go func() {
+		defer close(jobs)
+		for _, index := range candidates {
+			select {
+			case jobs <- index:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	wait.Wait()
+	close(results)
+	confirmed := make([]bool, len(opened))
+	for index := range results {
+		confirmed[index] = true
+	}
+	filtered := make([]probe.Open, 0, len(opened))
+	for index, candidate := range opened {
+		if !slices.Contains(ports, candidate.Port) || confirmed[index] {
+			filtered = append(filtered, candidate)
+		}
+	}
+	return filtered
 }
 
 func runMarkers(ctx context.Context, opened []probe.Open, markers []portMarker) []probe.Open {
