@@ -7,7 +7,7 @@ Mimamori is a home-network safety check. People run it to decide whether their h
 Please do **not** open a public issue with vulnerability details.
 
 1. Use GitHub's private reporting: open the [Security tab](https://github.com/shizukutanaka/Mimamori/security) and choose **Report a vulnerability**.
-2. If that button is not available, open an issue titled "Security contact request" with no details. The maintainer will reply with a private channel.
+2. If that button is not available, open an issue titled "Security contact request" with no details (the issue form's required fields can all be filled with that same phrase). The maintainer will reply with a private channel.
 
 Include the Mimamori version (`mimamori -version`), your OS, and the steps or input needed to reproduce. Reports in any language are welcome.
 
@@ -31,4 +31,4 @@ Only the latest release receives security fixes.
 
 ## 脆弱性の報告（日本語）
 
-脆弱性の詳細は、公開の Issue には書かないでください。[Security タブ](https://github.com/shizukutanaka/Mimamori/security)の **Report a vulnerability** から非公開で報告してください。このボタンがない場合は、詳細を書かずに「Security contact request」という題名で Issue を作成してください。非公開の連絡方法をお知らせします。
+脆弱性の詳細は、公開の Issue には書かないでください。[Security タブ](https://github.com/shizukutanaka/Mimamori/security)の **Report a vulnerability** から非公開で報告してください。このボタンがない場合は、詳細を書かずに「Security contact request」という題名で Issue を作成してください（Issue フォームの必須欄はすべて同じ語句で埋めて構いません）。非公開の連絡方法をお知らせします。
