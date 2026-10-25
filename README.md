@@ -60,6 +60,8 @@ On macOS, Terminal and SSH sessions can reach your home network without extra pe
 
 Supported languages: English (`en`), Japanese (`ja`), Simplified Chinese (`zh-Hans`), Traditional Chinese (`zh-Hant`), Spanish (`es`), Portuguese (`pt`), French (`fr`), German (`de`), Russian (`ru`), Korean (`ko`), and Indonesian (`id`). By default, Mimamori checks `LANGUAGE`, `LC_ALL`, `LC_MESSAGES`, then `LANG`; when these are empty, it uses the display language on Windows and the preferred language (System Settings → General → Language & Region) on macOS. Use `--lang` with a language code or regional tag, such as `--lang pt-BR` or `--lang zh_TW`, to choose explicitly. Use `--json` for indented JSON output. Its `checked` object (`ports`, `port_forwards`, `wifi`) shows which checks actually ran; `false` means not checked, not safe.
 
+Many fixes say "in the router settings": open a browser and go to the address shown on the Router line of the device list (for example `http://192.168.1.1`), or use your router maker's app. The login details are usually printed on a label on the router.
+
 Example:
 
 ```text
@@ -161,6 +163,8 @@ macOS では、「ターミナル」と SSH からは、追加の許可なしで
 終了コード: `0` は危険な問題なし（注意事項が表示される場合があります）、`2` は危険な問題あり、`1` はオプションまたは動作上のエラーです。確認できる機器がなかった場合にも `1` が返され、壊れた履歴ファイルは `devices.json.corrupt`（古いバックアップがある場合は `.corrupt.1`、`.corrupt.2` など）として残されます。履歴を保存できなかった場合でも、危険な問題があれば `2` を返します。確認の一部ができなかった場合も `0` を返します。その場合は、画面に「不完全な可能性」の案内が表示され、`--json` では `"incomplete": true` になります。定期実行のスクリプトでは、この項目も確かめてください。
 
 Windows では、タスク スケジューラーから直接起動した場合も、ダブルクリックと同じく Enter キーを待ち、タスクが終わらないことがあります。定期実行では `--json` を付けてください（`--json` では待ちません）。
+
+直し方に「ルーターの設定で」とあるときは、機器一覧の「ルーター」の行にあるアドレス（例: `http://192.168.1.1`）をブラウザで開くか、ルーターのメーカーのアプリを使います。ログイン情報はルーター本体のラベルに書かれていることが多いです。
 
 ```text
 Mimamori — 家の安全診断
