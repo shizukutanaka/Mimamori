@@ -10,7 +10,7 @@ func TestFrigateCatalogCoverage(t *testing.T) {
 			}
 		}
 	}
-	if got := T("en", "frigate_noauth", "Home Assistant"); got != "Anyone can control the Frigate NVR (Home Assistant) as an administrator without a password (port 5000)" {
+	if got := T("en", "frigate_noauth", "Home Assistant"); got != "The Frigate NVR (port 5000) on Home Assistant has no password. Anyone on your network can watch your cameras and change its settings as an administrator." {
 		t.Errorf("English Frigate message = %q", got)
 	}
 	if got := T("ja", "frigate_noauth_fix"); got != "Frigate を 0.14 以降に更新し、5000番の公開（Docker の ports の 5000:5000）を外して、ログインが必要な 8971番を使ってください。" {
