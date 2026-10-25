@@ -912,7 +912,7 @@ func TestNewDeviceFindingClassification(t *testing.T) {
 				if got := report.Score(findings); got != 97 {
 					t.Errorf("score = %d, want 97", got)
 				}
-				if got := report.Status(report.Score(findings), findings); got != "caution" {
+				if got := report.Status(findings); got != "caution" {
 					t.Errorf("status = %q, want caution", got)
 				}
 				if test.wantID == "new_device_private" {
