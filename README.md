@@ -81,7 +81,7 @@ If a device is listed only by its IP address, Mimamori could not learn its name.
 
 Exit codes: `0` means no danger finding (caution findings may still be present), `2` means at least one danger finding, and `1` means a flag or operational error; it is also returned when no device could be checked, and a corrupt history file is kept as `devices.json.corrupt` (or `.corrupt.1`, `.corrupt.2`, … if older backups exist). A danger finding still returns `2` even if the device history cannot be saved. `0` is also returned when part of the check could not run; the text output then shows an incomplete notice and `--json` sets `"incomplete": true`, so scheduled scripts should check that field too.
 
-On Windows, a run started directly by Task Scheduler may also wait for Enter, as with a double-click, so the task keeps running; add `--json` for scheduled runs (it never waits).
+On Windows, a run started directly by Task Scheduler may also wait for Enter, as with a double-click, so the task keeps running; add `--json` for scheduled runs (it never waits). In JSON, key your script on `findings[].id` (for example `ftp_open`, `new_device`); it never changes, while `message` and `fix` follow `--lang`.
 
 ## Build from source
 
@@ -162,7 +162,7 @@ macOS では、「ターミナル」と SSH からは、追加の許可なしで
 
 終了コード: `0` は危険な問題なし（注意事項が表示される場合があります）、`2` は危険な問題あり、`1` はオプションまたは動作上のエラーです。確認できる機器がなかった場合にも `1` が返され、壊れた履歴ファイルは `devices.json.corrupt`（古いバックアップがある場合は `.corrupt.1`、`.corrupt.2` など）として残されます。履歴を保存できなかった場合でも、危険な問題があれば `2` を返します。確認の一部ができなかった場合も `0` を返します。その場合は、画面に「不完全な可能性」の案内が表示され、`--json` では `"incomplete": true` になります。定期実行のスクリプトでは、この項目も確かめてください。
 
-Windows では、タスク スケジューラーから直接起動した場合も、ダブルクリックと同じく Enter キーを待ち、タスクが終わらないことがあります。定期実行では `--json` を付けてください（`--json` では待ちません）。
+Windows では、タスク スケジューラーから直接起動した場合も、ダブルクリックと同じく Enter キーを待ち、タスクが終わらないことがあります。定期実行では `--json` を付けてください（`--json` では待ちません）。 JSON を読むスクリプトは `findings[].id`（`ftp_open`、`new_device` など）を鍵にしてください。`id` は変わりませんが、`message` と `fix` は `--lang` で変わります。
 
 直し方に「ルーターの設定で」とあるときは、機器一覧の「ルーター」の行にあるアドレス（例: `http://192.168.1.1`）をブラウザで開くか、ルーターのメーカーのアプリを使います。ログイン情報はルーター本体のラベルに書かれていることが多いです。
 
