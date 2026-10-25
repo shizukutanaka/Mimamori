@@ -96,7 +96,7 @@ VERSION=v0.1.0 scripts/dist.sh
 
 `scripts/dist.sh` writes the release archives and `SHA256SUMS` to `dist/`; upload them to a GitHub Release.
 
-To add a language, add a catalog file in `internal/i18n` and list its code in `Supported()`.
+To add a language, follow [docs/TRANSLATING.md](docs/TRANSLATING.md).
 
 ---
 
@@ -191,4 +191,4 @@ VERSION=v0.1.0 scripts/dist.sh
 
 `scripts/dist.sh` はリリース用のアーカイブと `SHA256SUMS` を `dist/` に書き出します。これを GitHub Release にアップロードしてください。
 
-言語を追加する場合は `internal/i18n` にカタログファイルを追加し、`Supported()` にコードを登録してください。
+言語を追加する手順は [docs/TRANSLATING.md](docs/TRANSLATING.md) にあります。
