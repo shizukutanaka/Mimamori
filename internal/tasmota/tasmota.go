@@ -25,12 +25,19 @@ func requestURL(ip netip.Addr, port int) string {
 }
 
 func Unauthenticated(ctx context.Context, ip netip.Addr, port int, timeout time.Duration) bool {
+	unauthenticated, _ := Probe(ctx, ip, port, timeout)
+	return unauthenticated
+}
+
+// Probe fetches the root page once. responded reports whether the host answered with any HTTP
+// response, so callers can skip further web probes on a host that accepts connections but never replies.
+func Probe(ctx context.Context, ip netip.Addr, port int, timeout time.Duration) (unauthenticated, responded bool) {
 	if ctx == nil || !ip.Is4() || port < 1 || port > 65535 || timeout <= 0 {
-		return false
+		return false, false
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL(ip, port), nil)
 	if err != nil {
-		return false
+		return false, false
 	}
 	client := &http.Client{
 		Timeout:   timeout,
@@ -41,15 +48,15 @@ func Unauthenticated(ctx context.Context, ip netip.Addr, port int, timeout time.
 	}
 	response, err := client.Do(request)
 	if err != nil {
-		return false
+		return false, false
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return false
+		return false, true
 	}
 	body, err := io.ReadAll(io.LimitReader(response.Body, maxResponseBytes+1))
 	if err != nil || len(body) > maxResponseBytes {
-		return false
+		return false, true
 	}
-	return ParsePage(body)
+	return ParsePage(body), true
 }

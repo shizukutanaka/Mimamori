@@ -82,8 +82,12 @@ func markUnauthenticatedWebWithPort(ctx context.Context, opened []probe.Open, pr
 }
 
 func classifyUnauthenticatedWeb(ctx context.Context, ip netip.Addr, port int) string {
-	if tasmota.Unauthenticated(ctx, ip, port, 3*time.Second) {
+	isTasmota, responded := tasmota.Probe(ctx, ip, port, 3*time.Second)
+	if isTasmota {
 		return "tasmota"
+	}
+	if !responded {
+		return ""
 	}
 	if shelly.Unauthenticated(ctx, ip, port, 3*time.Second) {
 		return "shelly"
