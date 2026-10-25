@@ -979,7 +979,7 @@ func wifiFindings(security wifi.Security, lang string) []report.Finding {
 }
 
 func renderText(writer io.Writer, result output, lang string, lastCheckDays ...*int) {
-	fmt.Fprintln(writer, i18n.T(lang, "title"))
+	fmt.Fprintf(writer, "%s  %s\n", i18n.T(lang, "title"), version)
 	fmt.Fprintln(writer, i18n.T(lang, "score", i18n.T(lang, result.Status), result.Score))
 	checkedItems := []string{
 		i18n.T(lang, "checked_devices", i18n.CheckedDeviceCount(lang, len(result.Devices))),
