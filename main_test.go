@@ -1912,6 +1912,28 @@ func TestLiveSweepHosts(t *testing.T) {
 	}
 }
 
+func TestLateSweepHostsAddsOnlyUnscannedARPArrivals(t *testing.T) {
+	sweep := []netip.Addr{
+		netip.MustParseAddr("192.168.1.10"),
+		netip.MustParseAddr("192.168.1.11"),
+		netip.MustParseAddr("192.168.1.12"),
+	}
+	scanned := []netip.Addr{sweep[0]}
+	refreshed := []lan.Neighbor{
+		{IP: sweep[0], MAC: "aa:bb:cc:dd:ee:00"},
+		{IP: sweep[2], MAC: "aa:bb:cc:dd:ee:02"},
+		{IP: netip.MustParseAddr("192.168.2.5"), MAC: "aa:bb:cc:dd:ee:05"},
+	}
+	got := lateSweepHosts(sweep, scanned, refreshed)
+	want := []netip.Addr{sweep[2]}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("lateSweepHosts() = %v, want %v", got, want)
+	}
+	if got := lateSweepHosts(sweep, scanned, nil); len(got) != 0 {
+		t.Fatalf("lateSweepHosts() with empty ARP = %v, want none", got)
+	}
+}
+
 func TestMergeNeighborsOriginalWinsAndRefreshAdds(t *testing.T) {
 	ip1 := netip.MustParseAddr("192.168.1.1")
 	ip2 := netip.MustParseAddr("192.168.1.2")
