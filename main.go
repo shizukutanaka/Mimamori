@@ -982,6 +982,34 @@ func newDeviceFindingID(firstRun, isNew bool, mac string) string {
 	return "new_device"
 }
 
+// portFindings maps an opened port (or a pseudo port such as vncNoAuthPort) to the finding it proves.
+// Ports that need more than the port number (80 by service, 23/2323 and 554/8554 once per host) stay
+// in makeFindings.
+var portFindings = map[int]report.Finding{
+	smb1Port:      {ID: "smb1_enabled", Level: report.Caution, Points: 8},
+	1883:          {ID: "mqtt_anonymous", Level: report.Caution, Points: 8},
+	1984:          {ID: "go2rtc_noauth", Level: report.Danger, Points: 25},
+	5000:          {ID: "frigate_noauth", Level: report.Danger, Points: 25},
+	1880:          {ID: "nodered_noauth", Level: report.Danger, Points: 25},
+	6052:          {ID: "esphome_noauth", Level: report.Danger, Points: 25},
+	2375:          {ID: "docker_noauth", Level: report.Danger, Points: 25},
+	2376:          {ID: "docker_tls_noverify", Level: report.Danger, Points: 25},
+	8123:          {ID: "homeassistant_onboarding", Level: report.Danger, Points: 25},
+	8080:          {ID: "zigbee2mqtt_noauth", Level: report.Danger, Points: 25},
+	7125:          {ID: "moonraker_noauth", Level: report.Danger, Points: 25},
+	8581:          {ID: "homebridge_noauth", Level: report.Danger, Points: 25},
+	8384:          {ID: "syncthing_noauth", Level: report.Danger, Points: 25},
+	9091:          {ID: "transmission_noauth", Level: report.Danger, Points: 25},
+	8888:          {ID: "jupyter_noauth", Level: report.Danger, Points: 25},
+	11434:         {ID: "ollama_open", Level: report.Caution, Points: 8},
+	8443:          {ID: "codeserver_noauth", Level: report.Danger, Points: 25},
+	21:            {ID: "ftp_open", Level: report.Caution, Points: 8},
+	5900:          {ID: "vnc_open", Level: report.Caution, Points: 8},
+	vncNoAuthPort: {ID: "vnc_noauth", Level: report.Danger, Points: 25},
+	5555:          {ID: "adb_open", Level: report.Caution, Points: 8},
+	adbNoAuthPort: {ID: "adb_noauth", Level: report.Danger, Points: 25},
+}
+
 func makeFindings(
 	opened []probe.Open,
 	responses []ssdp.Response,
@@ -997,41 +1025,12 @@ func makeFindings(
 	rtspSeen := make(map[netip.Addr]struct{})
 	for _, item := range opened {
 		name := deviceNames[item.IP]
+		if finding, known := portFindings[item.Port]; known {
+			finding.IP, finding.Device = item.IP.String(), name
+			findings = append(findings, finding)
+			continue
+		}
 		switch item.Port {
-		case smb1Port:
-			findings = append(findings, report.Finding{ID: "smb1_enabled", Level: report.Caution, Points: 8, IP: item.IP.String(), Device: name})
-		case 1883:
-			findings = append(findings, report.Finding{ID: "mqtt_anonymous", Level: report.Caution, Points: 8, IP: item.IP.String(), Device: name})
-		case 1984:
-			findings = append(findings, report.Finding{ID: "go2rtc_noauth", Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name})
-		case 5000:
-			findings = append(findings, report.Finding{ID: "frigate_noauth", Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name})
-		case 1880:
-			findings = append(findings, report.Finding{ID: "nodered_noauth", Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name})
-		case 6052:
-			findings = append(findings, report.Finding{ID: "esphome_noauth", Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name})
-		case 2375:
-			findings = append(findings, report.Finding{ID: "docker_noauth", Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name})
-		case 2376:
-			findings = append(findings, report.Finding{ID: "docker_tls_noverify", Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name})
-		case 8123:
-			findings = append(findings, report.Finding{ID: "homeassistant_onboarding", Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name})
-		case 8080:
-			findings = append(findings, report.Finding{ID: "zigbee2mqtt_noauth", Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name})
-		case 7125:
-			findings = append(findings, report.Finding{ID: "moonraker_noauth", Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name})
-		case 8581:
-			findings = append(findings, report.Finding{ID: "homebridge_noauth", Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name})
-		case 8384:
-			findings = append(findings, report.Finding{ID: "syncthing_noauth", Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name})
-		case 9091:
-			findings = append(findings, report.Finding{ID: "transmission_noauth", Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name})
-		case 8888:
-			findings = append(findings, report.Finding{ID: "jupyter_noauth", Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name})
-		case 11434:
-			findings = append(findings, report.Finding{ID: "ollama_open", Level: report.Caution, Points: 8, IP: item.IP.String(), Device: name})
-		case 8443:
-			findings = append(findings, report.Finding{ID: "codeserver_noauth", Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name})
 		case 80:
 			service := "tasmota_noauth"
 			if item.Service == "shelly" {
@@ -1048,22 +1047,12 @@ func makeFindings(
 			}
 			telnetSeen[item.IP] = struct{}{}
 			findings = append(findings, report.Finding{ID: "telnet_open", Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name})
-		case 21:
-			findings = append(findings, report.Finding{ID: "ftp_open", Level: report.Caution, Points: 8, IP: item.IP.String(), Device: name})
-		case 5900:
-			findings = append(findings, report.Finding{ID: "vnc_open", Level: report.Caution, Points: 8, IP: item.IP.String(), Device: name})
-		case vncNoAuthPort:
-			findings = append(findings, report.Finding{ID: "vnc_noauth", Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name})
-		case 5555:
-			findings = append(findings, report.Finding{ID: "adb_open", Level: report.Caution, Points: 8, IP: item.IP.String(), Device: name})
 		case 554, 8554:
 			if _, exists := rtspSeen[item.IP]; exists {
 				continue
 			}
 			rtspSeen[item.IP] = struct{}{}
 			findings = append(findings, report.Finding{ID: "rtsp_noauth", Level: report.Caution, Points: 8, IP: item.IP.String(), Device: name})
-		case adbNoAuthPort:
-			findings = append(findings, report.Finding{ID: "adb_noauth", Level: report.Danger, Points: 25, IP: item.IP.String(), Device: name})
 		}
 	}
 	for ip, findingID := range newDeviceFindings {
