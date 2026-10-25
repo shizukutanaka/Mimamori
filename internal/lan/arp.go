@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Neighbor struct {
@@ -99,6 +100,8 @@ func IsRandomizedMAC(mac string) bool {
 	return err == nil && byte(first)&2 != 0
 }
 
+const commandTimeout = 15 * time.Second
+
 func ReadARP(ctx context.Context) ([]Neighbor, error) {
 	if runtime.GOOS == "linux" {
 		data, err := os.ReadFile("/proc/net/arp")
@@ -112,7 +115,9 @@ func ReadARP(ctx context.Context) ([]Neighbor, error) {
 	if runtime.GOOS == "windows" {
 		args = []string{"-a"}
 	}
-	output, err := exec.CommandContext(ctx, name, args...).Output()
+	commandContext, cancel := context.WithTimeout(ctx, commandTimeout)
+	defer cancel()
+	output, err := exec.CommandContext(commandContext, name, args...).Output()
 	if err != nil {
 		return nil, fmt.Errorf("arp table: %w", err)
 	}

@@ -91,6 +91,8 @@ func ParseWindowsRoute(text string) (netip.Addr, bool) {
 }
 
 func DefaultGateway(ctx context.Context) (netip.Addr, error) {
+	commandContext, cancel := context.WithTimeout(ctx, commandTimeout)
+	defer cancel()
 	var output []byte
 	var err error
 	switch runtime.GOOS {
@@ -103,7 +105,7 @@ func DefaultGateway(ctx context.Context) (netip.Addr, error) {
 			return netip.Addr{}, fmt.Errorf("default route not found")
 		}
 	case "windows":
-		output, err = exec.CommandContext(ctx, "route", "print", "-4", "0.0.0.0").Output()
+		output, err = exec.CommandContext(commandContext, "route", "print", "-4", "0.0.0.0").Output()
 		if err == nil {
 			if gateway, ok := ParseWindowsRoute(string(output)); ok {
 				return gateway, nil
@@ -111,7 +113,7 @@ func DefaultGateway(ctx context.Context) (netip.Addr, error) {
 			return netip.Addr{}, fmt.Errorf("default route not found")
 		}
 	default:
-		output, err = exec.CommandContext(ctx, "route", "-n", "get", "default").Output()
+		output, err = exec.CommandContext(commandContext, "route", "-n", "get", "default").Output()
 		if err == nil {
 			if gateway, ok := ParseBSDRoute(string(output)); ok {
 				return gateway, nil
