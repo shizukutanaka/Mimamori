@@ -14,7 +14,7 @@ In automatic mode, `i18n.Detect` checks `LANGUAGE` first (trying its colon-separ
 
 The English and Japanese base messages are in `internal/i18n/i18n.go`. Other language catalogs are in `internal/i18n/catalog_<code>.go`, for example `catalog_fr.go`.
 
-Feature-specific strings live in files such as `internal/i18n/catalog_wifi.go`, `catalog_notice.go`, and `catalog_adb.go`. These catalogs use maps keyed by language and merge their entries into the language catalogs in `init`.
+Feature-specific strings live in `internal/i18n/catalog_<feature>.go`, one file per check or screen (for example `catalog_wifi.go`, `catalog_notice.go`, `catalog_nodered.go`; about 35 files). Each holds a map keyed by language code and registers it with `add(...)` in its `init`, which merges the entries into `messages`. There are no per-file language lists to maintain.
 
 ## Fixing a translation
 
@@ -39,8 +39,8 @@ Matching the catalog’s existing register is required, including when translati
 
 1. Add its code to `Supported()` in `internal/i18n/i18n.go`.
 2. `i18n.Match` already maps most tags by their primary language code. Add special handling in `Match` only if the language needs it; `i18n.Detect` uses `Match`, so add detection logic only if the new language needs special environment or system-locale handling.
-3. Add `internal/i18n/catalog_<code>.go` with the base messages and register it in `messages`. English and Japanese are defined directly in `i18n.go`; other languages register their catalog there via `init`.
-4. Add the language’s strings to every feature catalog: `catalog_wifi.go`, `catalog_notice.go`, and `catalog_adb.go`. Update their language target maps and merge logic as needed.
+3. Add `internal/i18n/catalog_<code>.go` holding a `var catalog<Code> = map[string]string{...}` with every base message, and list it in the `messages` literal in `i18n.go` next to the other languages (`"fr": catalogFr,`). English and Japanese are defined inline in that literal; no `init` is needed.
+4. Add a block for the new language code to every feature catalog `catalog_<feature>.go` (`ls internal/i18n/catalog_*.go`, excluding the language files and tests). `TestCatalogKeysAndFormatVerbs` fails for each key the new language is missing, so it doubles as the checklist.
 5. Update `wantLanguages` and any relevant `Match`/`Detect` cases in `internal/i18n/i18n_test.go`. The catalog tests must pass for all base and feature keys, with matching format verbs.
 
 Run `go test ./internal/i18n/` and `go test ./...` after the changes.
