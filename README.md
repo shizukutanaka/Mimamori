@@ -65,7 +65,7 @@ Many fixes say "in the router settings": open a browser and go to the address sh
 Example:
 
 ```text
-Mimamori — Home Safety Check
+Mimamori — Home Safety Check  v0.1.0
 Home safety: Danger  75 points
 Devices: 4 (0 new)
 
@@ -167,7 +167,7 @@ Windows では、タスク スケジューラーから直接起動した場合�
 直し方に「ルーターの設定で」とあるときは、機器一覧の「ルーター」の行にあるアドレス（例: `http://192.168.1.1`）をブラウザで開くか、ルーターのメーカーのアプリを使います。ログイン情報はルーター本体のラベルに書かれていることが多いです。
 
 ```text
-Mimamori — 家の安全診断
+Mimamori — 家の安全診断  v0.1.0
 家の安全状態: 安全  100点
 機器: 4台（新しい機器 0台）
 
