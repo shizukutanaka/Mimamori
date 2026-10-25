@@ -60,6 +60,8 @@ On macOS, Terminal and SSH sessions can reach your home network without extra pe
 
 Supported languages: English (`en`), Japanese (`ja`), Simplified Chinese (`zh-Hans`), Traditional Chinese (`zh-Hant`), Spanish (`es`), Portuguese (`pt`), French (`fr`), German (`de`), Russian (`ru`), Korean (`ko`), and Indonesian (`id`). By default, Mimamori checks `LANGUAGE`, `LC_ALL`, `LC_MESSAGES`, then `LANG`; when these are empty, it uses the display language on Windows and the preferred language (System Settings → General → Language & Region) on macOS. Use `--lang` with a language code or regional tag, such as `--lang pt-BR` or `--lang zh_TW`, to choose explicitly. Use `--json` for indented JSON output. Its `checked` object (`ports`, `port_forwards`, `wifi`) shows which checks actually ran; `false` means not checked, not safe.
 
+Many fixes say "in the router settings": open a browser and go to the address shown on the Router line of the device list (for example `http://192.168.1.1`), or use your router maker's app. The login details are usually printed on a label on the router.
+
 Example:
 
 ```text
@@ -124,6 +126,8 @@ Mimamori は、自宅など自分で管理しているネットワークでだ�
 動作環境: Windows 10 以降、macOS 13 Ventura 以降、または Linux カーネル 3.2 以降（32 ビット Raspberry Pi は ARMv6 以降）。Windows 7・8 と macOS 12 以前には対応していません。配布物のビルドに使う Go がこれらに対応していないためです。
 
 同じリリースにある `SHA256SUMS` もダウンロードして、ファイルが正しいか確認できます。コマンド中の `<ファイル名>` はダウンロードしたファイル名に置き換えてください。Windows と macOS では表示されたハッシュを `SHA256SUMS` の該当行と比べてください。Linux では両方のファイルがあるフォルダーで実行します。
+
+直し方に「ルーターの設定で」とあるときは、機器一覧の「ルーター」の行にあるアドレス（例: `http://192.168.1.1`）をブラウザで開くか、ルーターのメーカーのアプリを使います。ログイン情報はルーター本体のラベルに書かれていることが多いです。
 
 ```text
 Windows: certutil -hashfile <ファイル名> SHA256
