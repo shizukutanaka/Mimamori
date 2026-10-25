@@ -37,7 +37,7 @@ func Score(findings []Finding) int {
 	return score
 }
 
-func Status(score int, findings []Finding) string {
+func Status(findings []Finding) string {
 	for _, finding := range findings {
 		if finding.Level == Danger {
 			return "danger"
