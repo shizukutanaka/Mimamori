@@ -10,7 +10,7 @@ func TestNodeREDCatalogCoverage(t *testing.T) {
 			}
 		}
 	}
-	if got := T("en", "nodered_noauth", "Home Assistant"); got != "Anyone can use the Node-RED editor (Home Assistant) without a password (port 1880)" {
+	if got := T("en", "nodered_noauth", "Home Assistant"); got != "The Node-RED editor (port 1880) on Home Assistant has no password. Anyone on your network can change your flows and run commands on that device." {
 		t.Errorf("English Node-RED message = %q", got)
 	}
 	if got := T("ja", "nodered_noauth_fix"); got != "Node-RED の settings.js で adminAuth を設定してパスワードを付け、Node-RED を再起動してください。" {
