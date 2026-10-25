@@ -35,7 +35,7 @@ func TestJupyterCatalogCoverage(t *testing.T) {
 	if got := T("en", "jupyter_noauth_fix"); got != "Start Jupyter with a token or password (don't launch it with --IdentityProvider.token='' or --NotebookApp.token='')." {
 		t.Errorf("English Jupyter fix = %q", got)
 	}
-	if got := T("ja", "jupyter_noauth", "居間"); got != "「居間」の Jupyter（8888番）は、合言葉（token）もパスワードもなしで家のネットワークに開いています。家の誰でも、この PC で好きなプログラムを動かせる状態です。" {
+	if got := T("ja", "jupyter_noauth", "居間"); got != "「居間」の Jupyter（8888番）は、トークンもパスワードもなしで家のネットワークに開いています。家の誰でも、この PC で好きなプログラムを動かせる状態です。" {
 		t.Errorf("Japanese Jupyter message = %q", got)
 	}
 	if got := T("ja", "jupyter_noauth_fix"); got != "Jupyter を起動するときに token かパスワードを設定してください（`--IdentityProvider.token=''` や `--NotebookApp.token=''` を付けて起動しない）。" {

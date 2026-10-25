@@ -41,10 +41,10 @@ func TestPiHoleCatalogCoverage(t *testing.T) {
 	if got := T("en", "pihole_noauth_fix"); got != "Set a password in the Pi-hole admin page or with `pihole setpassword`." {
 		t.Errorf("English Pi-hole fix = %q", got)
 	}
-	if got := T("ja", "pihole_noauth", "台所"); got != "「台所」の Pi-hole（80番）は、管理画面の合言葉が空です。家のネットワークの誰でも DNS の設定を書き換えて、家じゅうの機器を偽のサイトへ向けられる状態です。" {
+	if got := T("ja", "pihole_noauth", "台所"); got != "「台所」の Pi-hole（80番）は、管理画面のパスワードが空です。家のネットワークの誰でも DNS の設定を書き換えて、家じゅうの機器を偽のサイトへ向けられる状態です。" {
 		t.Errorf("Japanese Pi-hole message = %q", got)
 	}
-	if got := T("ja", "pihole_noauth_fix"); got != "Pi-hole の管理画面か `pihole setpassword` で、合言葉を設定してください。" {
+	if got := T("ja", "pihole_noauth_fix"); got != "Pi-hole の管理画面か `pihole setpassword` で、パスワードを設定してください。" {
 		t.Errorf("Japanese Pi-hole fix = %q", got)
 	}
 }

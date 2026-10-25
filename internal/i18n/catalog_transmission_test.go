@@ -38,10 +38,10 @@ func TestTransmissionCatalogCoverage(t *testing.T) {
 	if got := T("en", "transmission_noauth_fix"); got != "Turn on RPC authentication with a username and password in Transmission (for the linuxserver.io Docker image, set USER and PASS)." {
 		t.Errorf("English Transmission fix = %q", got)
 	}
-	if got := T("ja", "transmission_noauth", "居間"); got != "「居間」の Transmission の操作窓口（9091番）は、合言葉なしで家のネットワークに開いています。家の誰でも、ファイルの保存先を変えたり、取り込みが終わったときに動かすプログラムを設定したりできる状態です。" {
+	if got := T("ja", "transmission_noauth", "居間"); got != "「居間」の Transmission の操作窓口（9091番）は、パスワードなしで家のネットワークに開いています。家の誰でも、ファイルの保存先を変えたり、取り込みが終わったときに動かすプログラムを設定したりできる状態です。" {
 		t.Errorf("Japanese Transmission message = %q", got)
 	}
-	if got := T("ja", "transmission_noauth_fix"); got != "Transmission の設定で、操作窓口のユーザー名と合言葉を設定してください（linuxserver.io の Docker なら USER と PASS）。" {
+	if got := T("ja", "transmission_noauth_fix"); got != "Transmission の設定で、操作窓口のユーザー名とパスワードを設定してください（linuxserver.io の Docker なら USER と PASS）。" {
 		t.Errorf("Japanese Transmission fix = %q", got)
 	}
 }

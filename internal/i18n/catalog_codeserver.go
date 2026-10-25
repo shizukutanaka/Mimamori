@@ -6,7 +6,7 @@ var codeserverMessages = map[string]map[string]string{
 		"codeserver_noauth_fix": "Set the PASSWORD or HASHED_PASSWORD environment variable for the container and restart it (don't start it with --auth none).",
 	},
 	"ja": {
-		"codeserver_noauth":     "「%s」の code-server（ブラウザで使う VS Code、8443番）は、合言葉なしで家のネットワークに開いています。家の誰でも、ブラウザから端末を開き、好きな命令を実行できる状態です。",
+		"codeserver_noauth":     "「%s」の code-server（ブラウザで使う VS Code、8443番）は、パスワードなしで家のネットワークに開いています。家の誰でも、ブラウザから端末を開き、好きな命令を実行できる状態です。",
 		"codeserver_noauth_fix": "Docker の環境変数 PASSWORD か HASHED_PASSWORD を設定して、起動し直してください（--auth none で起動しない）。",
 	},
 	"zh-Hans": {

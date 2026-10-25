@@ -6,8 +6,8 @@ var syncthingMessages = map[string]map[string]string{
 		"syncthing_noauth_fix": "Set a GUI Authentication User and Password in Syncthing's Settings → GUI.",
 	},
 	"ja": {
-		"syncthing_noauth":     "「%s」の Syncthing の管理画面（8384番）は、合言葉が設定されていません。家のネットワークの誰でも同期の相手を足して、この機器のファイルを抜き取ったり書き換えたりできる状態です。",
-		"syncthing_noauth_fix": "Syncthing の管理画面の「設定」→「GUI」で、GUI 認証のユーザー名と合言葉を設定してください。",
+		"syncthing_noauth":     "「%s」の Syncthing の管理画面（8384番）は、パスワードが設定されていません。家のネットワークの誰でも同期の相手を足して、この機器のファイルを抜き取ったり書き換えたりできる状態です。",
+		"syncthing_noauth_fix": "Syncthing の管理画面の「設定」→「GUI」で、GUI 認証のユーザー名とパスワードを設定してください。",
 	},
 	"zh-Hans": {
 		"syncthing_noauth":     "%s 上的 Syncthing 网页管理界面（端口 8384）没有密码。您网络中的任何人都可以添加自己的设备，并复制或覆盖此机器上的文件。",

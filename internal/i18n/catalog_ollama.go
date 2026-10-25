@@ -6,7 +6,7 @@ var ollamaMessages = map[string]map[string]string{
 		"ollama_open_fix": "If no other device needs it, set OLLAMA_HOST to 127.0.0.1:11434 (for Docker, publish with -p 127.0.0.1:11434:11434). In the Windows or Mac app, turn off \"Expose Ollama to the network\" in Settings.",
 	},
 	"ja": {
-		"ollama_open":     "「%s」の Ollama（ローカルの AI、11434番）は、合言葉のしくみがないまま家のネットワークに開いています。家の誰でも、この PC の GPU で AI を動かしたり、モデルを消したりできます。ollama.com にサインインしていれば、その枠のクラウドのモデルも使えます。",
+		"ollama_open":     "「%s」の Ollama（ローカルの AI、11434番）は、パスワードのしくみがないまま家のネットワークに開いています。家の誰でも、この PC の GPU で AI を動かしたり、モデルを消したりできます。ollama.com にサインインしていれば、その枠のクラウドのモデルも使えます。",
 		"ollama_open_fix": "ほかの機器から使わないなら、OLLAMA_HOST を 127.0.0.1:11434 にしてください（Docker なら -p 127.0.0.1:11434:11434）。Windows・Mac のアプリなら、設定の「Expose Ollama to the network」を切ってください。",
 	},
 	"zh-Hans": {

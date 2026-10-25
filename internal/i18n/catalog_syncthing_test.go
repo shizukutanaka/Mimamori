@@ -38,10 +38,10 @@ func TestSyncthingCatalogCoverage(t *testing.T) {
 	if got := T("en", "syncthing_noauth_fix"); got != "Set a GUI Authentication User and Password in Syncthing's Settings → GUI." {
 		t.Errorf("English Syncthing fix = %q", got)
 	}
-	if got := T("ja", "syncthing_noauth", "台所"); got != "「台所」の Syncthing の管理画面（8384番）は、合言葉が設定されていません。家のネットワークの誰でも同期の相手を足して、この機器のファイルを抜き取ったり書き換えたりできる状態です。" {
+	if got := T("ja", "syncthing_noauth", "台所"); got != "「台所」の Syncthing の管理画面（8384番）は、パスワードが設定されていません。家のネットワークの誰でも同期の相手を足して、この機器のファイルを抜き取ったり書き換えたりできる状態です。" {
 		t.Errorf("Japanese Syncthing message = %q", got)
 	}
-	if got := T("ja", "syncthing_noauth_fix"); got != "Syncthing の管理画面の「設定」→「GUI」で、GUI 認証のユーザー名と合言葉を設定してください。" {
+	if got := T("ja", "syncthing_noauth_fix"); got != "Syncthing の管理画面の「設定」→「GUI」で、GUI 認証のユーザー名とパスワードを設定してください。" {
 		t.Errorf("Japanese Syncthing fix = %q", got)
 	}
 }

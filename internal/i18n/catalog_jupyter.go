@@ -6,7 +6,7 @@ var jupyterMessages = map[string]map[string]string{
 		"jupyter_noauth_fix": "Start Jupyter with a token or password (don't launch it with --IdentityProvider.token='' or --NotebookApp.token='').",
 	},
 	"ja": {
-		"jupyter_noauth":     "「%s」の Jupyter（8888番）は、合言葉（token）もパスワードもなしで家のネットワークに開いています。家の誰でも、この PC で好きなプログラムを動かせる状態です。",
+		"jupyter_noauth":     "「%s」の Jupyter（8888番）は、トークンもパスワードもなしで家のネットワークに開いています。家の誰でも、この PC で好きなプログラムを動かせる状態です。",
 		"jupyter_noauth_fix": "Jupyter を起動するときに token かパスワードを設定してください（`--IdentityProvider.token=''` や `--NotebookApp.token=''` を付けて起動しない）。",
 	},
 	"zh-Hans": {
