@@ -68,6 +68,25 @@ var messages = map[string]map[string]string{
 		"points_recovered":       "（+%d点）",
 		"press_enter":            "Enter キーを押すと閉じます...",
 	},
+	"zh-Hans": catalogZhHans,
+	"zh-Hant": catalogZhHant,
+	"es":      catalogEs,
+	"pt":      catalogPt,
+	"fr":      catalogFr,
+	"de":      catalogDe,
+	"ru":      catalogRu,
+	"ko":      catalogKo,
+	"id":      catalogId,
+}
+
+// add merges a per-service catalog (lang → key → text) into messages. Every service catalog
+// registers itself from its own init().
+func add(catalog map[string]map[string]string) {
+	for lang, texts := range catalog {
+		for key, text := range texts {
+			messages[lang][key] = text
+		}
+	}
 }
 
 func Detect(getenv func(string) string) string {

@@ -47,26 +47,6 @@ var moonrakerMessages = map[string]map[string]string{
 	},
 }
 
-var moonrakerCatalogTargets = map[string]map[string]string{
-	"en":      messages["en"],
-	"ja":      messages["ja"],
-	"zh-Hans": catalogZhHans,
-	"zh-Hant": catalogZhHant,
-	"es":      catalogEs,
-	"pt":      catalogPt,
-	"fr":      catalogFr,
-	"de":      catalogDe,
-	"ru":      catalogRu,
-	"ko":      catalogKo,
-	"id":      catalogId,
-}
-
 func init() {
-	for lang, catalog := range moonrakerMessages {
-		target := moonrakerCatalogTargets[lang]
-		for key, value := range catalog {
-			target[key] = value
-		}
-		messages[lang] = target
-	}
+	add(moonrakerMessages)
 }

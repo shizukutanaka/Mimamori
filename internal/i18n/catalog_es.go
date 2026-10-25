@@ -31,7 +31,3 @@ var catalogEs = map[string]string{
 	"points_recovered":       "(+%d puntos)",
 	"press_enter":            "Pulse Enter para cerrar...",
 }
-
-func init() {
-	messages["es"] = catalogEs
-}

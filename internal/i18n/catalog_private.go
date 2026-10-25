@@ -48,11 +48,5 @@ var privateAddressMessages = map[string]map[string]string{
 }
 
 func init() {
-	for lang, catalog := range privateAddressMessages {
-		target := wifiCatalogTargets[lang]
-		for key, value := range catalog {
-			target[key] = value
-		}
-		messages[lang] = target
-	}
+	add(privateAddressMessages)
 }

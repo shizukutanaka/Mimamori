@@ -47,25 +47,6 @@ var vncMessages = map[string]map[string]string{
 	},
 }
 
-var vncCatalogTargets = map[string]map[string]string{
-	"en":      messages["en"],
-	"ja":      messages["ja"],
-	"zh-Hans": catalogZhHans,
-	"zh-Hant": catalogZhHant,
-	"es":      catalogEs,
-	"pt":      catalogPt,
-	"fr":      catalogFr,
-	"de":      catalogDe,
-	"ru":      catalogRu,
-	"ko":      catalogKo,
-	"id":      catalogId,
-}
-
 func init() {
-	for lang, catalog := range vncCatalogTargets {
-		for key, value := range vncMessages[lang] {
-			catalog[key] = value
-		}
-		messages[lang] = catalog
-	}
+	add(vncMessages)
 }

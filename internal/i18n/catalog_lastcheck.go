@@ -58,26 +58,6 @@ var lastCheckMessages = map[string]map[string]string{
 	},
 }
 
-var lastCheckCatalogTargets = map[string]map[string]string{
-	"en":      messages["en"],
-	"ja":      messages["ja"],
-	"zh-Hans": catalogZhHans,
-	"zh-Hant": catalogZhHant,
-	"es":      catalogEs,
-	"pt":      catalogPt,
-	"fr":      catalogFr,
-	"de":      catalogDe,
-	"ru":      catalogRu,
-	"ko":      catalogKo,
-	"id":      catalogId,
-}
-
 func init() {
-	for lang, catalog := range lastCheckMessages {
-		target := lastCheckCatalogTargets[lang]
-		for key, value := range catalog {
-			target[key] = value
-		}
-		messages[lang] = target
-	}
+	add(lastCheckMessages)
 }

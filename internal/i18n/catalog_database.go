@@ -48,11 +48,5 @@ var databaseMessages = map[string]map[string]string{
 }
 
 func init() {
-	for lang, catalog := range databaseMessages {
-		target := wifiCatalogTargets[lang]
-		for key, value := range catalog {
-			target[key] = value
-		}
-		messages[lang] = target
-	}
+	add(databaseMessages)
 }

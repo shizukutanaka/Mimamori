@@ -31,7 +31,3 @@ var catalogPt = map[string]string{
 	"points_recovered":       "(+%d pontos)",
 	"press_enter":            "Pressione Enter para fechar...",
 }
-
-func init() {
-	messages["pt"] = catalogPt
-}

@@ -70,11 +70,5 @@ var adbMessages = map[string]map[string]string{
 }
 
 func init() {
-	for lang, catalog := range adbMessages {
-		target := wifiCatalogTargets[lang]
-		for key, value := range catalog {
-			target[key] = value
-		}
-		messages[lang] = target
-	}
+	add(adbMessages)
 }

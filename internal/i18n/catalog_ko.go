@@ -31,7 +31,3 @@ var catalogKo = map[string]string{
 	"points_recovered":       "(+%d점)",
 	"press_enter":            "Enter 키를 누르면 닫힙니다...",
 }
-
-func init() {
-	messages["ko"] = catalogKo
-}
