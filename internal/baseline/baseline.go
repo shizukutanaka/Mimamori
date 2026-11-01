@@ -76,7 +76,10 @@ func (s *Store) Observe(mac, ip, name string, now time.Time) (isNew bool) {
 	return false
 }
 
+// Save writes the store atomically next to path. When path is a symbolic link
+// to an existing file, the link is kept and its target is replaced instead.
 func Save(path string, store Store) error {
+	path = followLinks(path)
 	directory := filepath.Dir(path)
 	var createdDirectories []string
 	for current := directory; current != filepath.Dir(current); current = filepath.Dir(current) {
@@ -125,6 +128,7 @@ func Save(path string, store Store) error {
 }
 
 func Quarantine(path string) (string, error) {
+	path = followLinks(path)
 	quarantinePath := path + ".corrupt"
 	for index := 0; index <= 99; index++ {
 		if index > 0 {
@@ -151,4 +155,25 @@ func DefaultPath() (string, error) {
 		return "", err
 	}
 	return filepath.Join(configDirectory, "Mimamori", "devices.json"), nil
+}
+
+// followLinks replaces a symbolic link in the last path element with its
+// target so the atomic rename lands on the real file; parent directories are
+// left as given. Dangling and overly deep links are written to as-is.
+func followLinks(path string) string {
+	for depth := 0; depth < 8; depth++ {
+		info, err := os.Lstat(path)
+		if err != nil || info.Mode()&os.ModeSymlink == 0 {
+			return path
+		}
+		target, err := os.Readlink(path)
+		if err != nil {
+			return path
+		}
+		if !filepath.IsAbs(target) {
+			target = filepath.Join(filepath.Dir(path), target)
+		}
+		path = target
+	}
+	return path
 }
