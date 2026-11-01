@@ -183,3 +183,33 @@ func TestQuarantineFailsWhenBackupNamesAreExhausted(t *testing.T) {
 		t.Fatalf("original contents = %q, want %q", got, original)
 	}
 }
+
+func TestSaveKeepsSymlinkAndUpdatesTarget(t *testing.T) {
+	root := t.TempDir()
+	target := filepath.Join(root, "real", "devices.json")
+	if err := Save(target, Store{Version: 1, Devices: map[string]Seen{}}); err != nil {
+		t.Fatalf("Save(target) error = %v", err)
+	}
+	link := filepath.Join(root, "devices.json")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	seen := Seen{FirstSeen: time.Unix(1, 0).UTC(), LastSeen: time.Unix(2, 0).UTC(), LastIP: "192.168.1.10"}
+	if err := Save(link, Store{Version: 1, Devices: map[string]Seen{"aa:bb:cc:dd:ee:ff": seen}}); err != nil {
+		t.Fatalf("Save(link) error = %v", err)
+	}
+	info, err := os.Lstat(link)
+	if err != nil {
+		t.Fatalf("Lstat(link) error = %v", err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("Save(link) replaced the symlink with a regular file")
+	}
+	loaded, _, err := Load(target)
+	if err != nil {
+		t.Fatalf("Load(target) error = %v", err)
+	}
+	if _, ok := loaded.Devices["aa:bb:cc:dd:ee:ff"]; !ok {
+		t.Fatalf("Save(link) did not update the symlink target: %+v", loaded.Devices)
+	}
+}
