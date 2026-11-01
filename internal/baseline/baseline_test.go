@@ -247,3 +247,21 @@ func TestQuarantineKeepsSymlinkAndMovesTarget(t *testing.T) {
 		t.Fatalf("Load(target) after re-save error = %v", err)
 	}
 }
+
+func TestObserveKeepsKnownNameWhenOnlyIPIsKnown(t *testing.T) {
+	var store Store
+	now := time.Now().UTC()
+	store.Observe("aa:bb:cc:dd:ee:ff", "192.168.1.2", "Camera", now)
+	store.Observe("aa:bb:cc:dd:ee:ff", "192.168.1.9", "192.168.1.9", now.Add(time.Hour))
+	seen := store.Devices["aa:bb:cc:dd:ee:ff"]
+	if seen.Name != "Camera" {
+		t.Fatalf("Name = %q, want the earlier real name kept when this run only knows the IP", seen.Name)
+	}
+	if seen.LastIP != "192.168.1.9" {
+		t.Fatalf("LastIP = %q, want the new IP", seen.LastIP)
+	}
+	store.Observe("aa:bb:cc:dd:ee:ff", "192.168.1.9", "Camera 2", now.Add(2*time.Hour))
+	if seen := store.Devices["aa:bb:cc:dd:ee:ff"]; seen.Name != "Camera 2" {
+		t.Fatalf("Name = %q, want a newly resolved real name to replace the old one", seen.Name)
+	}
+}
