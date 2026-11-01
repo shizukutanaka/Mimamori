@@ -1471,6 +1471,17 @@ func TestDeviceNamePrecedence(t *testing.T) {
 	}{
 		{
 			name:     "SSDP description wins",
+			ip:       ip,
+			neighbor: randomized,
+			gateway:  router,
+			descriptions: map[netip.Addr]ssdp.Description{
+				ip: {Device: ssdp.Device{FriendlyName: "Living Room"}},
+			},
+			resolvedNames: map[netip.Addr]string{ip: "speaker.local"},
+			want:          "Living Room",
+		},
+		{
+			name:     "router label wins over SSDP description",
 			ip:       router,
 			neighbor: randomized,
 			gateway:  router,
@@ -1478,7 +1489,7 @@ func TestDeviceNamePrecedence(t *testing.T) {
 				router: {Device: ssdp.Device{FriendlyName: "Living Room"}},
 			},
 			resolvedNames: map[netip.Addr]string{router: "router.local"},
-			want:          "Living Room",
+			want:          i18n.T("en", "router"),
 		},
 		{
 			name:          "router label wins over resolved name",

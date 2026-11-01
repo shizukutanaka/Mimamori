@@ -743,6 +743,9 @@ func deviceName(
 	descriptions map[netip.Addr]ssdp.Description,
 	resolvedNames map[netip.Addr]string,
 ) string {
+	if gateway.IsValid() && ip == gateway {
+		return i18n.T(lang, "router")
+	}
 	if description, ok := descriptions[ip]; ok {
 		if name := sanitizeName(description.Device.FriendlyName); name != "" {
 			return name
@@ -751,9 +754,6 @@ func deviceName(
 		if name != "" {
 			return name
 		}
-	}
-	if gateway.IsValid() && ip == gateway {
-		return i18n.T(lang, "router")
 	}
 	if name := sanitizeName(resolvedNames[ip]); name != "" {
 		return name
