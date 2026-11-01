@@ -69,7 +69,7 @@ func (s *Store) Observe(mac, ip, name string, now time.Time) (isNew bool) {
 	}
 	seen.LastSeen = now
 	seen.LastIP = ip
-	if name != "" {
+	if name != "" && name != ip {
 		seen.Name = name
 	}
 	s.Devices[key] = seen
