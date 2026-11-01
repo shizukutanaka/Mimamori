@@ -213,3 +213,37 @@ func TestSaveKeepsSymlinkAndUpdatesTarget(t *testing.T) {
 		t.Fatalf("Save(link) did not update the symlink target: %+v", loaded.Devices)
 	}
 }
+
+func TestQuarantineKeepsSymlinkAndMovesTarget(t *testing.T) {
+	root := t.TempDir()
+	target := filepath.Join(root, "real", "devices.json")
+	if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(target, []byte("not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "devices.json")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	backup, err := Quarantine(link)
+	if err != nil {
+		t.Fatalf("Quarantine(link) error = %v", err)
+	}
+	if want := target + ".corrupt"; backup != want {
+		t.Fatalf("Quarantine(link) backup = %q, want %q", backup, want)
+	}
+	if info, err := os.Lstat(link); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("Quarantine(link) removed or replaced the symlink: info=%v err=%v", info, err)
+	}
+	if _, err := os.Stat(target); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("Quarantine(link) left the corrupt target in place: %v", err)
+	}
+	if err := Save(link, Store{Version: 1, Devices: map[string]Seen{}}); err != nil {
+		t.Fatalf("Save(link) after quarantine error = %v", err)
+	}
+	if _, _, err := Load(target); err != nil {
+		t.Fatalf("Load(target) after re-save error = %v", err)
+	}
+}

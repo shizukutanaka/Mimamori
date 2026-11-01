@@ -128,6 +128,7 @@ func Save(path string, store Store) error {
 }
 
 func Quarantine(path string) (string, error) {
+	path = followLinks(path)
 	quarantinePath := path + ".corrupt"
 	for index := 0; index <= 99; index++ {
 		if index > 0 {
