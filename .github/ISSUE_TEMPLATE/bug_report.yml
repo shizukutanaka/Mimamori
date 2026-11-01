@@ -28,7 +28,7 @@ body:
   - type: input
     id: version
     attributes:
-      label: Mimamori version (`mimamori -version`)
+      label: Mimamori version (first line of the output, or `mimamori -version`) / バージョン（出力の 1 行目、または `mimamori -version`）
       placeholder: v0.1.0
     validations:
       required: true
