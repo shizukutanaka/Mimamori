@@ -1407,7 +1407,7 @@ func TestSanitizeName(t *testing.T) {
 	}
 
 	ip := netip.MustParseAddr("192.168.1.20")
-	name := deviceName("en", ip, lan.Neighbor{}, netip.Addr{}, map[netip.Addr]ssdp.Description{
+	name, _ := deviceName("en", ip, lan.Neighbor{}, netip.Addr{}, map[netip.Addr]ssdp.Description{
 		ip: {Device: ssdp.Device{Manufacturer: "Brand\x1b", ModelName: "Model\u200f"}},
 	}, nil)
 	if name != "Brand Model" {
@@ -1468,6 +1468,7 @@ func TestDeviceNamePrecedence(t *testing.T) {
 		descriptions  map[netip.Addr]ssdp.Description
 		resolvedNames map[netip.Addr]string
 		want          string
+		wantHistory   string
 	}{
 		{
 			name:     "SSDP description wins",
@@ -1479,6 +1480,7 @@ func TestDeviceNamePrecedence(t *testing.T) {
 			},
 			resolvedNames: map[netip.Addr]string{ip: "speaker.local"},
 			want:          "Living Room",
+			wantHistory:   "Living Room",
 		},
 		{
 			name:     "router label wins over SSDP description",
@@ -1490,6 +1492,7 @@ func TestDeviceNamePrecedence(t *testing.T) {
 			},
 			resolvedNames: map[netip.Addr]string{router: "router.local"},
 			want:          i18n.T("en", "router"),
+			wantHistory:   "Living Room",
 		},
 		{
 			name:          "router label wins over resolved name",
@@ -1498,6 +1501,7 @@ func TestDeviceNamePrecedence(t *testing.T) {
 			gateway:       router,
 			resolvedNames: map[netip.Addr]string{router: "home-gateway"},
 			want:          i18n.T("en", "router"),
+			wantHistory:   "home-gateway",
 		},
 		{
 			name:          "sanitized resolved name wins over randomized label",
@@ -1505,12 +1509,14 @@ func TestDeviceNamePrecedence(t *testing.T) {
 			neighbor:      randomized,
 			resolvedNames: map[netip.Addr]string{ip: " Phone\u0000.local "},
 			want:          "Phone.local",
+			wantHistory:   "Phone.local",
 		},
 		{
-			name:     "randomized label wins over IP",
-			ip:       ip,
-			neighbor: randomized,
-			want:     i18n.T("en", "randomized_device"),
+			name:        "randomized label wins over IP",
+			ip:          ip,
+			neighbor:    randomized,
+			want:        i18n.T("en", "randomized_device"),
+			wantHistory: ip.String(),
 		},
 		{
 			name:          "uppercase NetBIOS name is preserved",
@@ -1518,13 +1524,14 @@ func TestDeviceNamePrecedence(t *testing.T) {
 			neighbor:      randomized,
 			resolvedNames: map[netip.Addr]string{ip: "DESKTOP-AB12CD"},
 			want:          "DESKTOP-AB12CD",
+			wantHistory:   "DESKTOP-AB12CD",
 		},
-		{name: "IP fallback", ip: ip, want: ip.String()},
+		{name: "IP fallback", ip: ip, want: ip.String(), wantHistory: ip.String()},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got := deviceName(
+			got, history := deviceName(
 				"en",
 				test.ip,
 				test.neighbor,
@@ -1533,7 +1540,10 @@ func TestDeviceNamePrecedence(t *testing.T) {
 				test.resolvedNames,
 			)
 			if got != test.want {
-				t.Fatalf("deviceName() = %q, want %q", got, test.want)
+				t.Fatalf("deviceName() display = %q, want %q", got, test.want)
+			}
+			if history != test.wantHistory {
+				t.Fatalf("deviceName() history = %q, want %q", history, test.wantHistory)
 			}
 		})
 	}

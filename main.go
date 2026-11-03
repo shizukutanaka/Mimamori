@@ -393,12 +393,12 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 	now := time.Now().UTC()
 	for _, host := range reportedHosts {
 		neighbor := neighborByIP[host]
-		name := deviceName(lang, host, neighbor, gatewayIP, descriptions, resolvedNames)
+		name, historyName := deviceName(lang, host, neighbor, gatewayIP, descriptions, resolvedNames)
 		deviceNames[host] = name
 		if neighbor.MAC == "" {
 			continue
 		}
-		isNew := store.Observe(neighbor.MAC, host.String(), name, now)
+		isNew := store.Observe(neighbor.MAC, host.String(), historyName, now)
 		if findingID := newDeviceFindingID(firstRun, isNew, neighbor.MAC); findingID != "" {
 			newDeviceFindings[host] = findingID
 		}
@@ -742,26 +742,32 @@ func deviceName(
 	gateway netip.Addr,
 	descriptions map[netip.Addr]ssdp.Description,
 	resolvedNames map[netip.Addr]string,
-) string {
-	if gateway.IsValid() && ip == gateway {
-		return i18n.T(lang, "router")
-	}
+) (display, history string) {
+	resolved := ""
 	if description, ok := descriptions[ip]; ok {
 		if name := sanitizeName(description.Device.FriendlyName); name != "" {
-			return name
-		}
-		name := sanitizeName(sanitizeName(description.Device.Manufacturer) + " " + sanitizeName(description.Device.ModelName))
-		if name != "" {
-			return name
+			resolved = name
+		} else if name := sanitizeName(sanitizeName(description.Device.Manufacturer) + " " + sanitizeName(description.Device.ModelName)); name != "" {
+			resolved = name
 		}
 	}
-	if name := sanitizeName(resolvedNames[ip]); name != "" {
-		return name
+	if resolved == "" {
+		resolved = sanitizeName(resolvedNames[ip])
+	}
+	history = resolved
+	if history == "" {
+		history = ip.String()
+	}
+	if gateway.IsValid() && ip == gateway {
+		return i18n.T(lang, "router"), history
+	}
+	if resolved != "" {
+		return resolved, history
 	}
 	if neighbor.MAC != "" && lan.IsRandomizedMAC(neighbor.MAC) {
-		return i18n.T(lang, "randomized_device")
+		return i18n.T(lang, "randomized_device"), history
 	}
-	return ip.String()
+	return ip.String(), history
 }
 
 func stripUnsafeRunes(s string) string {
