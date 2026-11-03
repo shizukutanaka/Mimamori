@@ -24,11 +24,6 @@ func requestURL(ip netip.Addr, port int) string {
 	return "http://" + netip.AddrPortFrom(ip, uint16(port)).String() + "/"
 }
 
-func Unauthenticated(ctx context.Context, ip netip.Addr, port int, timeout time.Duration) bool {
-	unauthenticated, _ := Probe(ctx, ip, port, timeout)
-	return unauthenticated
-}
-
 // Probe fetches the root page once. responded reports whether the host answered with any HTTP
 // response, so callers can skip further web probes on a host that accepts connections but never replies.
 func Probe(ctx context.Context, ip netip.Addr, port int, timeout time.Duration) (unauthenticated, responded bool) {

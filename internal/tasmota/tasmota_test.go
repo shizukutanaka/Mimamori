@@ -43,7 +43,7 @@ func TestParsePage(t *testing.T) {
 	}
 }
 
-func TestUnauthenticated(t *testing.T) {
+func TestProbe(t *testing.T) {
 	tests := []struct {
 		name     string
 		status   int
@@ -90,9 +90,9 @@ func TestUnauthenticated(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			got := Unauthenticated(context.Background(), address.Addr(), int(address.Port()), time.Second)
+			got, _ := Probe(context.Background(), address.Addr(), int(address.Port()), time.Second)
 			if got != test.want {
-				t.Fatalf("Unauthenticated() = %t, want %t", got, test.want)
+				t.Fatalf("Probe() = %t, want %t", got, test.want)
 			}
 			if requests != 1 {
 				t.Errorf("request count = %d, want exactly one", requests)
@@ -104,7 +104,7 @@ func TestUnauthenticated(t *testing.T) {
 	}
 }
 
-func TestUnauthenticatedGuards(t *testing.T) {
+func TestProbeGuards(t *testing.T) {
 	ipv4 := netip.MustParseAddr("127.0.0.1")
 	tests := []struct {
 		name    string
@@ -124,8 +124,8 @@ func TestUnauthenticatedGuards(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := Unauthenticated(test.ctx, test.ip, test.port, test.timeout); got {
-				t.Fatal("Unauthenticated() = true, want false")
+			if got, _ := Probe(test.ctx, test.ip, test.port, test.timeout); got {
+				t.Fatal("Probe() = true, want false")
 			}
 		})
 	}
