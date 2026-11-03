@@ -301,6 +301,13 @@ func runWithEnv(args []string, stdout, stderr io.Writer, getenv func(string) str
 	extra = append(extra, withoutHosts(lateSweep, extra)...)
 	if len(extra) > 0 {
 		opened = append(opened, probe.Scan(ctx, extra, scanPorts, 700*time.Millisecond, 128)...)
+		// The extra scan's outbound SYNs force ARP resolution for hosts that answered
+		// SSDP but were absent from both earlier neighbor-table reads (e.g. when no
+		// gateway was found and the subnet sweep was skipped). Re-read once so their
+		// MACs reach history tracking and new-device detection.
+		if refreshed, err := lan.ReadARP(ctx); err == nil {
+			neighbors = mergeNeighbors(neighbors, refreshed)
+		}
 	}
 	phase1SweepHosts := withoutHosts(phase1Targets, phase1Hosts)
 	scanTargets := mergeHosts(allHosts, append(phase1SweepHosts, lateSweep...))
