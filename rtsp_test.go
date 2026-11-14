@@ -126,7 +126,10 @@ func TestMarkUnauthenticatedRTSP8554(t *testing.T) {
 
 func startRTSPTestServer(t *testing.T, address, response string) probe.Open {
 	t.Helper()
-	listener, err := net.Listen("tcp4", net.JoinHostPort(address, "0"))
+	// The marker only re-checks ports 554/8554, so the fake server must
+	// listen on 554 for the probe to reach it (the same pattern as
+	// startRTSPTestServerAtPort below).
+	listener, err := net.Listen("tcp4", net.JoinHostPort(address, "554"))
 	if err != nil {
 		t.Skipf("cannot listen on %s: %v", address, err)
 	}

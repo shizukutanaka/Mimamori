@@ -16,6 +16,8 @@ Run Mimamori only on networks you own or manage, such as your home network. On c
 
 ## Download and run
 
+> **Note:** No release binaries have been published yet. The table and steps below describe the layout planned for the first release; until it appears, please use [Build from source](#build-from-source) instead (a single `go build`).
+
 Download the latest release from [GitHub Releases](https://github.com/shizukutanaka/Mimamori/releases/latest). Choose the file for your PC; `<version>` is the release tag shown on that page:
 
 | Your PC | File |
@@ -117,6 +119,8 @@ Linux では Wi-Fi の安全方式を `nmcli` で確認し、NetworkManager が�
 Mimamori は、自宅など自分で管理しているネットワークでだけ実行してください。カフェ・ホテル・学校・会社などのネットワークで実行すると、他人の機器のポートまで確認することになり、そのネットワークの規約に反したり、侵入検知の警報が鳴ったりするおそれがあります。
 
 ## ダウンロードと実行
+
+> **注意:** リリース用のバイナリはまだ公開されていません。下の表と手順は初回リリースで予定している構成です。それまでは [ソースからビルド](#ソースからビルド)（`go build` 1回）をご利用ください。
 
 お使いの PC に合うファイルを [GitHub Releases](https://github.com/shizukutanaka/Mimamori/releases/latest) からダウンロードしてください。`<version>` はリリースページに表示されているタグです。
 
