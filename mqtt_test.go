@@ -67,7 +67,10 @@ func TestMarkUnauthenticatedMQTT(t *testing.T) {
 
 func startMQTTTestBroker(t *testing.T, address string, connackCode byte) probe.Open {
 	t.Helper()
-	listener, err := net.Listen("tcp4", net.JoinHostPort(address, "0"))
+	// The marker only re-checks port 1883, so the fake broker must listen
+	// there for the probe to reach it (the same pattern as the other
+	// service tests, e.g. Frigate on 5000 and Docker on 2375).
+	listener, err := net.Listen("tcp4", net.JoinHostPort(address, "1883"))
 	if err != nil {
 		t.Skipf("cannot listen on %s: %v", address, err)
 	}
